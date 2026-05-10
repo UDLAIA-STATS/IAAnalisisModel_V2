@@ -1,0 +1,7 @@
+{
+  "dev_mode": "branch",
+  "include": [
+    "src/tinybird/",
+    "src\\tinybird\\tinybird_resources.py"
+  ]
+}
