@@ -5,6 +5,7 @@ class DepthHistory(SQLModel, table=True):
     __tablename__ = "depth_history"  # type: ignore
 
     id: int = Field(primary_key=True, index=True)
+    match_id: int = Field(index=True)
     frame_num: int = Field(index=True)
     timestamp_ms: float = Field(index=True)
     depth: float = Field(default=1.0, description="Profundidad del campo en relacion con la camara")

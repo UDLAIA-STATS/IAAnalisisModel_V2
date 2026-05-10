@@ -4,6 +4,7 @@ from sqlmodel import Field, SQLModel
 class BallState(SQLModel, table=True):
     __tablename__ = "ball_states" # type: ignore
     id: int = Field(primary_key=True, index=True)
+    match_id: int = Field(index=True)
     frame_num: int = Field(index=True)
     timestamp_ms: float = Field(index=True)
     conf: float
