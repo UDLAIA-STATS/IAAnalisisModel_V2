@@ -21,7 +21,7 @@ class PlayerNumbers(SQLModel, table=True):
     id: int = Field(primary_key=True, index=True)
     player_id: int = Field(foreign_key="players.id", index=True)
     number: int
-    confiability: float
+    confidence: float
     frame_number: int
 
 class PlayerState(SQLModel, table=True):
@@ -30,7 +30,7 @@ class PlayerState(SQLModel, table=True):
     player_id: int = Field(foreign_key="players.id", index=True)
     timestamp_ms: float = Field(index=True)
     frame_number: int = Field(index=True)
-    confiability: float
+    confidence: float
     x1: float = Field(nullable=True)
     y1: float = Field(nullable=True)
     x2: float = Field(nullable=True)
@@ -39,7 +39,7 @@ class PlayerState(SQLModel, table=True):
     dy: float = Field(nullable=True, description="Posicion en y cruda a partir de las coordenadas del bbox")
     dx_meters: float = Field(nullable=True)
     dy_meters: float = Field(nullable=True)
-    is_goal: bool = Field(description="True si el jugado metio gol", default=False)
+    is_goal: bool = Field(description="True si el jugador metio gol", default=False)
     has_ball: bool = Field(description="True si el jugador tiene poseasion de la pelota", default=False)
     distance_meters: float = Field(default=0)
     delta_x: float = Field(default=0, description="Distancia vectorial a partir del calculo realizado en el modulo correspondiente")

@@ -11,4 +11,4 @@ class GoalModel(SQLModel, table=True):
     y1: float = Field(nullable=True)
     x2: float = Field(nullable=True)
     y2: float = Field(nullable=True)
-    conf: float
+    confidence: float

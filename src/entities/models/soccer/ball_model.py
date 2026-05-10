@@ -7,7 +7,7 @@ class BallState(SQLModel, table=True):
     match_id: int = Field(index=True)
     frame_num: int = Field(index=True)
     timestamp_ms: float = Field(index=True)
-    conf: float
+    confidence: float
     x1: float = Field(nullable=True)
     y1: float = Field(nullable=True)
     x2: float = Field(nullable=True)
