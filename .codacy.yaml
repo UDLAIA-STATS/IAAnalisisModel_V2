@@ -1,0 +1,7 @@
+---
+languages:
+  python:
+    enabled: true
+exclude_paths:
+  - "res/**"
+  - "__init__.py"
