@@ -12,8 +12,8 @@ class PlayerModel(SQLModel, table=True):
     team_color: str
     goals: int = Field(default=0) # Goles del jugador
     shirt_number: int = Field(nullable=True, default=None)
-    create_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    update_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     
 
 class PlayerNumbers(SQLModel, table=True):
