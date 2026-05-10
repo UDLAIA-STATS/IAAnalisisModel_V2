@@ -7,7 +7,7 @@ class PlayerModel(SQLModel, table=True):
     __tablename__: str = "players" # type: ignore
     id: int = Field(primary_key=True, index=True)
     match_id: int = Field(index=True)
-    track_id: int = Field(unique=True, index=True)
+    track_id: int = Field(index=True)
     team: int = Field(index=True)
     team_color: str
     goals: int = Field(default=0) # Goles del jugador
