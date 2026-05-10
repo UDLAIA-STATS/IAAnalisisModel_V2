@@ -50,8 +50,8 @@ class PlayerState(SQLModel, table=True):
     speed_kmh: float = Field(default=0, description="Velocidad del jugador en km/h")
     vx: float = Field(default=0, description="Velocidad en x en m/s")
     vy: float = Field(default=0, description="Velocidad en y en m/s")
-    ball_x: float = Field(default=0, description="Posicion de la pelota en x, ssolo se ingresa si el jugador posee el balon")
-    ball_y: float = Field(default=0, description="Posicion de la pelota en y, ssolo se ingresa si el jugador posee el balon")
+    ball_x: float | None = Field(default=None, description="Posicion de la pelota en x, solo se ingresa si el jugador posee el balon", nullable=True)
+    ball_y: float | None = Field(default=None, description="Posicion de la pelota en y, solo se ingresa si el jugador posee el balon", nullable=True)
     ball_id: int = Field(
         foreign_key="ball_states.id",
         default=None,
