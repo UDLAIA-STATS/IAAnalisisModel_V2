@@ -62,7 +62,7 @@ class IVideoManager(ABC):
             dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
             normalized_frame = self.normalize_frame(frame)
-            batch.append(VideoItem(frame=normalized_frame, timestamp=dt, frame_num=frame_num))
+            batch.append(VideoItem(frame=normalized_frame, annotated_frame=frame, timestamp=dt, frame_num=frame_num))
 
         return batch
     

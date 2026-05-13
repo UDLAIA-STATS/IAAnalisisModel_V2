@@ -1,10 +1,7 @@
-from abc import ABC, abstractmethod
-from cv2.typing import MatLike
 import numpy as np
 import supervision as sv
 
-class IAnnotatorService(ABC):
-    
+class AnnotatorServiceBase():
     def __init__(
             self,
             anotator_name: str,
@@ -32,7 +29,6 @@ class IAnnotatorService(ABC):
         if thickness > 100 or text_scale > 100:
             raise ValueError("Thickness and text scale must be less than 100")
     
-    @abstractmethod
     def annotate(self, annotated_frame: np.ndarray, detections, label: str):
         annotated_frame =  self.box_annotator.annotate(scene=annotated_frame, detections=detections)
         annotated_frame = self.label_annotator.annotate(scene=annotated_frame, detections=detections, labels=[label]) #type: ignore
