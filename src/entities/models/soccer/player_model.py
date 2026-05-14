@@ -71,6 +71,5 @@ class PlayerState(
             {"indexes": [
                 {"columns": ["player_id", "frame_number"], "unique": True},
                 {"columns": ["player_id", "timestamp_ms"]},
-                {"columns": ["match_id", "frame_number"]},   # if you add match_id here
             ]},
         )
