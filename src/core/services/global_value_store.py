@@ -3,7 +3,7 @@ from typing import Any, Dict
 from typing_extensions import Self
 
 
-class GlobalValueStore():
+class GlobalValueStore:
     _instance = None
 
     def __init__(self) -> None:
@@ -15,16 +15,16 @@ class GlobalValueStore():
             cls._instance._data = {}
 
         return cls._instance
-    
+
     def __getitem__(self, key):
         return self._data[key]
-    
+
     def __setitem__(self, key, value):
         self._data[key] = value
 
-    def get(self, key: str, default: Any=None):
+    def get(self, key: str, default: Any = None):
         return self._data.get(key, default)
-    
+
     def set(self, key: str, value: Any):
         self._data[key] = value
 
@@ -36,4 +36,3 @@ class GlobalValueStore():
 
 
 value_store = GlobalValueStore()
-    
