@@ -13,7 +13,7 @@ class GoalModel(NumericIdModel, AuditTable, SoccerFrameData, BBoxModel, table=Tr
 
     __table_args__ = (
         {"indexes": [
-            {"columns": ["match_id", "frame_num"]},
+            {"columns": ["match_id", "frame_number"]},
             {"columns": ["match_id", "timestamp_ms"]},
             {"columns": ["match_id", "confidence"]},
         ]},
