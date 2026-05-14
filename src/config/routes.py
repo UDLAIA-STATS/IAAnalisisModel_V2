@@ -13,7 +13,7 @@ OUTPUT_IMAGES_DIR = OUTPUTS_DIR / "images"
 OUTPUT_REPORTS_DIR = OUTPUTS_DIR / "reports"
 
 # ANNOTATIONS
-ANNOTATED_FILES_DIR = OUTPUTS_DIR / "annotated" 
+ANNOTATED_FILES_DIR = OUTPUTS_DIR / "annotated"
 ANOTATED_VIDEOS_DIR = ANNOTATED_FILES_DIR / "videos"
 ANOTATED_OUTPUT_IMAGES = ANNOTATED_FILES_DIR / "images"
 
@@ -43,6 +43,7 @@ PLAYER_CUSTOM_DATASET = DATASETS_DIR / "custom_player_dataset"
 BALL_CUSTOM_DATASET = DATASETS_DIR / "custom_ball_dataset"
 CUSTOM_MODELS = DATASETS_DIR / "custom_models"
 
+
 def ensure_directories():
     """
     Asegura que las carpetas necesarias existan.
@@ -66,7 +67,7 @@ def ensure_directories():
         PLAYER_CUSTOM_DATASET,
         BALL_CUSTOM_DATASET,
         MODELS_BACKUP_DIR,
-        CUSTOM_MODELS
+        CUSTOM_MODELS,
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)

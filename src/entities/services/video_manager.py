@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Generator, List, Tuple, Union
+from typing import Generator, List, Union
 import uuid
 from cv2 import VideoCapture
 import cv2
@@ -9,8 +9,8 @@ from cv2.typing import MatLike
 from config.routes import ANOTATED_OUTPUT_IMAGES, ANOTATED_VIDEOS_DIR
 from entities.models.app.video_item import VideoItem
 
-class IVideoManager(ABC):
 
+class IVideoManager(ABC):
     def __init__(self, match_id: int, video_path: Path):
         if self.validate_video(video_path):
             self.cap: VideoCapture = VideoCapture(video_path.as_posix())
@@ -23,26 +23,26 @@ class IVideoManager(ABC):
         self.ouput_images_dir = ANOTATED_OUTPUT_IMAGES / f"{match_id}"
         self.ouput_images_dir.mkdir(parents=True, exist_ok=True)
         self.frame_size = (1280, 720)
-    
+
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()
-    
+
     def get_frame_size(self):
         return self.cap.get(cv2.CAP_PROP_FRAME_WIDTH), self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    
+
     def get_total_frames(self):
         return int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
+
     def get_fps(self):
         return self.cap.get(cv2.CAP_PROP_FPS)
-    
+
     def get_first_frame(self):
         _, frame = self.cap.read()
         return frame
-    
+
     def check_video_state(self):
         return self.cap.isOpened()
-    
+
     def get_batch(self, batch_size: int):
         """
         Get a batch of frames from the video.
@@ -65,8 +65,8 @@ class IVideoManager(ABC):
             batch.append(VideoItem(frame=normalized_frame, annotated_frame=frame, timestamp=dt, frame_num=frame_num))
 
         return batch
-    
-    def normalize_frame(self, frame: MatLike, target_size = 640) -> MatLike:
+
+    def normalize_frame(self, frame: MatLike, target_size=640) -> MatLike:
         h, w = frame.shape[:2]
 
         scale = max(target_size / min(h, w), 1.0)
@@ -91,7 +91,7 @@ class IVideoManager(ABC):
             save_frame: save the frame as an image if True
         """
         pass
-    
+
     def _save_frame_as_image(self, frame_num: int, frame: MatLike):
         image_path = self.ouput_images_dir / f"{frame_num}_{uuid.uuid4()}.jpg"
         cv2.imwrite(image_path.as_posix(), frame)

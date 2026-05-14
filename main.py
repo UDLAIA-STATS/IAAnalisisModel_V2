@@ -16,6 +16,7 @@ async def lifespan(app: FastAPI):
     connection_manager.dispose()
     print("Application is shutting down...")
 
+
 def run_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.add_middleware(
@@ -31,7 +32,9 @@ def run_app() -> FastAPI:
 
     return app
 
+
 app = run_app()
+
 
 def main():
     uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)

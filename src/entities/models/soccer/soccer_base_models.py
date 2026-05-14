@@ -7,15 +7,10 @@ class BBoxModel(SQLModel):
     x2: float | None = Field(nullable=True, default=None)
     y2: float | None = Field(nullable=True, default=None)
 
+
 class DynamicMovementModel(SQLModel):
-    dx: float | None = Field(
-        nullable=True,
-        description="Posicion en x cruda a partir de las coordenadas del bbox",
-        default=None)
-    dy: float | None = Field(
-        nullable=True,
-        description="Posicion en y cruda a partir de las coordenadas del bbox",
-        default=None)
+    dx: float | None = Field(nullable=True, description="Posicion en x cruda a partir de las coordenadas del bbox", default=None)
+    dy: float | None = Field(nullable=True, description="Posicion en y cruda a partir de las coordenadas del bbox", default=None)
     dx_meters: float | None = Field(nullable=True, default=None)
     dy_meters: float | None = Field(nullable=True, default=None)
 
@@ -30,6 +25,7 @@ class DynamicMovementModel(SQLModel):
     speed_kmh: float = Field(default=0, description="Velocidad del jugador en km/h")
     vx: float = Field(default=0, description="Velocidad en x en m/s")
     vy: float = Field(default=0, description="Velocidad en y en m/s")
+
 
 class SoccerFrameData(SQLModel):
     frame_number: int = Field(index=True)

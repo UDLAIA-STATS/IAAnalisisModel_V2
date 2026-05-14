@@ -6,12 +6,13 @@ from entities.services.video_manager import IVideoManager
 import logfire
 from src.core.services.global_value_store import value_store
 
+
 class VideoManager(IVideoManager):
     def read_video(self, batch_size: int):
         if not self.check_video_state():
             logfire.info(f"[VideoManager] Cap was not opened, opening video {self.video_path}")
             self.cap.open(self.video_path.as_posix())
-        
+
         logfire.info(f"[VideoManager] Start reading video of match {self.match_id} with {batch_size} frames per batch")
 
         frame_rate = self.get_fps()
@@ -29,11 +30,9 @@ class VideoManager(IVideoManager):
 
             if not batch or len(batch) == 0:
                 break
-            
+
             frame_count += len(batch)
             yield batch
-
-
 
     def write(self, frames: Union[List[MatLike], MatLike], frame_num: int, save_frame: bool = False):
         if isinstance(frames, List):
@@ -43,6 +42,6 @@ class VideoManager(IVideoManager):
                     self._save_frame_as_image(frame_num, frame)
             return
 
-        cv2.imwrite(self.output_video.as_posix(), frames)            
+        cv2.imwrite(self.output_video.as_posix(), frames)
         if save_frame:
-                self._save_frame_as_image(frame_num, frames)
+            self._save_frame_as_image(frame_num, frames)
