@@ -1,1 +1,1 @@
-from .video_manager import VideoManager
+from .video_manager import VideoManager as VideoManager

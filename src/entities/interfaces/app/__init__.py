@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 class AnalysisStepHandler(ABC):
     number_step: int
     name: str
-    retryable: bool =  True
+    retryable: bool = True
     max_retries: int = 3
 
     def __init__(self) -> None:

@@ -1,14 +1,20 @@
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
+
+from entities.models.base_models import AuditTable, NumericIdModel
+from entities.models.soccer.soccer_base_models import BBoxModel, SoccerFrameData
 
 
-class GoalModel(SQLModel, table=True):
-    __tablename__ = "goals" # type: ignore
-    id: int = Field(primary_key=True, index=True)
+class GoalModel(NumericIdModel, AuditTable, SoccerFrameData, BBoxModel, table=True):
+    __tablename__ = "goals"  # type: ignore
+
     match_id: int = Field(index=True)
-    frame_num: int = Field(index=True)
-    timestamp_ms: float = Field(index=True)
-    x1: float = Field(nullable=True)
-    y1: float = Field(nullable=True)
-    x2: float = Field(nullable=True)
-    y2: float = Field(nullable=True)
-    confidence: float
+
+    __table_args__ = (
+        {
+            "indexes": [
+                {"columns": ["match_id", "frame_number"]},
+                {"columns": ["match_id", "timestamp_ms"]},
+                {"columns": ["match_id", "confidence"]},
+            ]
+        },
+    )

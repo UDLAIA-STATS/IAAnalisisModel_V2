@@ -3,14 +3,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logfire
+from core.database import connection_manager
 import uvicorn
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("Application is starting...")
+    print("Creating tables...")
+    connection_manager.create_database()
     yield
+    connection_manager.dispose()
     print("Application is shutting down...")
+
 
 def run_app() -> FastAPI:
     app = FastAPI(lifespan=lifespan)
@@ -27,7 +32,9 @@ def run_app() -> FastAPI:
 
     return app
 
+
 app = run_app()
+
 
 def main():
     uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
