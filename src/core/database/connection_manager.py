@@ -10,10 +10,6 @@ class ConnectionManager:
     def __init__(self):
         """
         Constructor de la clase ConnectionManager.
-
-        Args:
-            match_id (int): ID del partido para el que se crea la base de datos.
-
         """
         self._create_engine()
 
