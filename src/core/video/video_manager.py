@@ -1,13 +1,12 @@
 from typing import List, Union
-import cv2
 from cv2.typing import MatLike
 
-from entities.services.video_manager import IVideoManager
+from entities.services.video_manager_base import VideoManagerBase
 import logfire
 from src.core.services.global_value_store import value_store
 
 
-class VideoManager(IVideoManager):
+class VideoManager(VideoManagerBase):
     def read_video(self, batch_size: int):
         if not self.check_video_state():
             logfire.info(f"[VideoManager] Cap was not opened, opening video {self.video_path}")
@@ -37,11 +36,12 @@ class VideoManager(IVideoManager):
     def write(self, frames: Union[List[MatLike], MatLike], frame_num: int, save_frame: bool = False):
         if isinstance(frames, List):
             for frame in frames:
-                cv2.imwrite(self.output_video.as_posix(), frame)
+                self.writer.write(frame)
                 if save_frame:
                     self._save_frame_as_image(frame_num, frame)
             return
 
-        cv2.imwrite(self.output_video.as_posix(), frames)
+        self.writer.write(frames)
         if save_frame:
             self._save_frame_as_image(frame_num, frames)
+

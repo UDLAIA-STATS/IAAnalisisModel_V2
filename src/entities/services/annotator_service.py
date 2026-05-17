@@ -1,9 +1,9 @@
 import numpy as np
 import supervision as sv
-
+from supervision.detection.core import Detections
 
 class AnnotatorServiceBase:
-    def __init__(self, anotator_name: str, hex_color: str, thickness: int = 1, text_thickness: int = 1, text_scale: float = 0.5):
+    def __init__(self, anotator_name: str = "Object", hex_color: str = "#FF0000", thickness: int = 1, text_thickness: int = 1, text_scale: float = 0.5):
         self.anotator_name = anotator_name
 
         self._validate(hex_color, thickness, text_scale)
@@ -20,7 +20,7 @@ class AnnotatorServiceBase:
         if thickness > 100 or text_scale > 100:
             raise ValueError("Thickness and text scale must be less than 100")
 
-    def annotate(self, annotated_frame: np.ndarray, detections, label: str):
+    def annotate(self, annotated_frame: np.ndarray, detections: Detections, label: str):
         annotated_frame = self.box_annotator.annotate(scene=annotated_frame, detections=detections)
         annotated_frame = self.label_annotator.annotate(scene=annotated_frame, detections=detections, labels=[label])  # type: ignore
 

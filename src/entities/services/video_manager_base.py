@@ -5,16 +5,19 @@ import uuid
 from cv2 import VideoCapture
 import cv2
 from cv2.typing import MatLike
+import logfire
+import numpy as np
 
 from config.routes import ANOTATED_OUTPUT_IMAGES, ANOTATED_VIDEOS_DIR
 from entities.models.app.video_item import VideoItem
 
 
-class IVideoManager(ABC):
-    def __init__(self, match_id: int, video_path: Path):
+class VideoManagerBase(ABC):
+    def __init__(self, match_id: int, video_path: Path, show: bool = False):
         if self.validate_video(video_path):
             self.cap: VideoCapture = VideoCapture(video_path.as_posix())
         else:
+            logfire.error(f"Video no encontrado: {video_path}")
             raise FileNotFoundError("Video no encontrado")
 
         self.video_path = video_path
@@ -22,7 +25,19 @@ class IVideoManager(ABC):
         self.match_id = match_id
         self.ouput_images_dir = ANOTATED_OUTPUT_IMAGES / f"{match_id}"
         self.ouput_images_dir.mkdir(parents=True, exist_ok=True)
-        self.frame_size = (1280, 720)
+        self.frame_size = self.get_frame_size()
+
+        self.writer = cv2.VideoWriter(
+            self.output_video.absolute(),
+            cv2.VideoWriter.fourcc(*"mp4v"),
+            self.get_fps(),
+            (int(self.frame_size[0]), int(self.frame_size[1])),
+        )
+
+        if show:
+            cv2.namedWindow("Video", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Video", int(self.frame_size[0]), int(self.frame_size[1]))
+
 
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()
@@ -92,9 +107,11 @@ class IVideoManager(ABC):
         """
         pass
 
+
     def _save_frame_as_image(self, frame_num: int, frame: MatLike):
         image_path = self.ouput_images_dir / f"{frame_num}_{uuid.uuid4()}.jpg"
         cv2.imwrite(image_path.as_posix(), frame)
 
     def __exit__(self):
         self.cap.release()
+        self.writer.release()
