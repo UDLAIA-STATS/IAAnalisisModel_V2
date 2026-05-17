@@ -6,8 +6,8 @@ from entities.models.soccer.player_model import PlayerModel, PlayerState
 
 
 class PlayerStatesRepository:
+    @staticmethod
     def get_player_state_by_track_id(
-            self,
             frame_number: int,
             match_id: int, track_id: int,
             session: Session) -> Tuple[PlayerModel, PlayerState] | Tuple[None, None] | Tuple[PlayerModel, None]:
@@ -31,8 +31,9 @@ class PlayerStatesRepository:
             return player_result, None
 
         return player_result, states_result
-    
-    def get_player_state_by_id(self, player_state_id: int, session: Session) -> PlayerState | None:
+
+    @staticmethod
+    def get_player_state_by_id(player_state_id: int, session: Session) -> PlayerState | None:
         query = select(PlayerState).where(PlayerState.id == player_state_id)
         return session.exec(query).first()
     

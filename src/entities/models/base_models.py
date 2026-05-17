@@ -5,7 +5,7 @@ from sqlmodel import Field, SQLModel
 
 
 class NumericIdModel(SQLModel):
-    id: int | None = Field(primary_key=True, index=True, default=None, sa_column_kwargs={"autoincrement": True})
+    id: int  = Field(primary_key=True, index=True, default=None, sa_column_kwargs={"autoincrement": True})
 
 
 class UUIDModel(SQLModel):
