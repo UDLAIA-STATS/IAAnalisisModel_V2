@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logfire
 from core.database import connection_manager
 import uvicorn
-import src.presentation.routers.analyze_router as analyze_router
+from presentation.routers.analyze_router import router as analyze_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
