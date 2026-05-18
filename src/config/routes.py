@@ -1,4 +1,5 @@
 from pathlib import Path
+from config.configuration import settings
 
 # BASE
 BASE_RES_DIR = Path("./res")
@@ -29,10 +30,10 @@ MODELS_BACKUP_DIR = MODELS_DIR / "backup"
 YOLO_MODELS_DIR = MODELS_DIR / "yolo"
 TROCR_PATH = MODELS_DIR / "trocr"
 CONFIG_MODELS_DIR = MODELS_DIR / "config"
-# BALL_MODEL_PATH = MODELS_DIR / BALL_MODEL_NAME
-# PLAYER_MODEL_PATH = MODELS_DIR / PLAYER_MODEL_NAME
-# MODEL_GOALS_PATH = MODELS_DIR / GOAL_MODEL_NAME
-# DEPTH_MODEL_PATH = MODELS_DIR / DEPTH_MODEL_NAME
+BALL_MODEL_PATH = YOLO_MODELS_DIR / str(settings.BALL_MODEL_NAME)
+PLAYER_MODEL_PATH = YOLO_MODELS_DIR / str(settings.PLAYER_MODEL_NAME)
+MODEL_GOALS_PATH = YOLO_MODELS_DIR / str(settings.GOAL_MODEL_NAME)
+DEPTH_MODEL_PATH = MODELS_DIR / str(settings.DEPTH_MODEL_NAME)
 BYTETRACK_CONFIG_PATH = CONFIG_MODELS_DIR / "bytetrack.yaml"
 
 # RETRAINING
@@ -71,3 +72,14 @@ def ensure_directories():
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
+
+def validate_model():
+    for file in [
+        BALL_MODEL_PATH,
+        PLAYER_MODEL_PATH,
+        MODEL_GOALS_PATH,
+        DEPTH_MODEL_PATH,
+        BYTETRACK_CONFIG_PATH,
+    ]:
+        if not file.exists() or not file.is_file():
+            raise FileNotFoundError(f"Modelo no encontrado: {file.name}")

@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Generator, List, Sequence, Union
 
 import logfire
+from pydantic import BaseModel, ConfigDict
 from sqlmodel import Session
 import torch
 from ultralytics.models import YOLO
@@ -9,8 +10,6 @@ from ultralytics.engine.results import Results
 
 from entities.models.app.track_data import TrackData
 from entities.models.app.video_item import VideoItem
-from entities.models.soccer.player_model import PlayerState
-from entities.services.annotator_service import AnnotatorServiceBase
 from entities.types.detector_types import DetectorTypes
 from supervision.detection.core import Detections
 from ultralytics.engine.results import Results
@@ -19,7 +18,7 @@ class DetectorBase():
     def __init__(
             self,
             model: Path,
-            tracker_config_file: Path,
+            tracker_config_file: Path | None,
             type: DetectorTypes = DetectorTypes.DETECTION):
         """
         Initialize detector class to get tracks in base using a YOLO model with detection only
@@ -31,7 +30,9 @@ class DetectorBase():
         """
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.__init_model__(model)
-        self.tracker_config_file: str = tracker_config_file.as_posix()
+        if tracker_config_file is not None:
+            self.tracker_config_file: str = tracker_config_file.as_posix()
+
         self.type: DetectorTypes = type
 
     def __init_model__(self, model: Path, half: bool = False):
@@ -52,7 +53,7 @@ class DetectorBase():
 
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
-        if self.type == DetectorTypes.TRACKING:
+        if self.type == DetectorTypes.TRACKING and self.tracker_config_file is not None:
             return self.model.track(
                 frame,
                 tracker=self.tracker_config_file,
@@ -108,3 +109,9 @@ class DetectorBase():
 
     def _save_tracks(self, detected_tracks: Generator[TrackData], video_item: VideoItem, session: Session):
         pass
+
+class TrackManagerItem(BaseModel):
+    tracker: DetectorBase
+    object_ids: List[int]
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=False)

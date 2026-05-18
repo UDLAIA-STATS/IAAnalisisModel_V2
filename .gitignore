@@ -22,4 +22,4 @@ settings.toml
 *.jpeg
 *.sql
 *.pt
-
+*.task

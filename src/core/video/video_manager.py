@@ -44,4 +44,3 @@ class VideoManager(VideoManagerBase):
         self.writer.write(frames)
         if save_frame:
             self._save_frame_as_image(frame_num, frames)
-
