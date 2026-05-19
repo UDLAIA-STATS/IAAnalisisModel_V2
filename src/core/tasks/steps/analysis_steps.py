@@ -66,5 +66,4 @@ class NumberAndColorRecognition(AnalysisStepHandler):
                 label=label
             )
 
-
         return True
