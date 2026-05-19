@@ -9,10 +9,11 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
 
     match_id: int = Field(index=True)
     track_id: int = Field(index=True)
-    team_id: int | None = Field(index=True,default=None, nullable=True)
-    team_color: str | None = Field(index=True, default=None, nullable=True)
+    team_id: int = Field(index=True,default=None, nullable=True)
+    team_color: str = Field(index=True, default=None, nullable=True)
     goals: int = Field(default=0)  # Goles del jugador
-    shirt_number: int | None = Field(nullable=True, default=None)
+    shirt_number: int = Field(nullable=True, default=None)
+    crop_path: str = Field(nullable=True, default=None) 
 
     states: list["PlayerState"] = Relationship(back_populates="player")
     numbers: list["PlayerNumbers"] = Relationship(back_populates="player")

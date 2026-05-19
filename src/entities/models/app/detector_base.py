@@ -62,7 +62,7 @@ class DetectorBase():
         else:
             return self.model(frame, conf=0.3, iou=0.45, verbose=False, device=self.device)
 
-    def extract_detections(self, results: Sequence[Union[Results, Detections]], objects_ids: List[int]) -> dict[int, Union[Results, Detections]]:
+    def extract_detections(self, results: Sequence[Union[Results, Detections]], objects_ids: List[int]) -> dict[int, Detections]:
         detections_map = {}
         detections = Detections.from_ultralytics(results[0])
 
@@ -75,7 +75,11 @@ class DetectorBase():
 
         return detections_map
 
-    def _extract_tracks_data(self, filtered_detections: dict[int, Results | Detections], frame_num: int) -> Generator[TrackData, None, None]:
+    def _extract_tracks_data(
+            self,
+            filtered_detections: dict[int, Detections],
+            frame_num: int,
+            video_item: VideoItem) -> Generator[TrackData, None, None]:
         for object_id, filtered_detection in filtered_detections.items():
             for i in range(len(filtered_detection)):
                 if filtered_detection is None:
@@ -104,7 +108,7 @@ class DetectorBase():
         detections = self.detect(video_item.frame)
         filtered_detections = self.extract_detections(detections, object_ids)
 
-        track_data = self._extract_tracks_data(filtered_detections, video_item.frame_num)
+        track_data = self._extract_tracks_data(filtered_detections, video_item.frame_num, video_item)
         self._save_tracks(track_data, video_item, session)
 
     def _save_tracks(self, detected_tracks: Generator[TrackData], video_item: VideoItem, session: Session):

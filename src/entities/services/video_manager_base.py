@@ -58,7 +58,7 @@ class VideoManagerBase(ABC):
     def check_video_state(self):
         return self.cap.isOpened()
 
-    def get_batch(self, batch_size: int):
+    def get_batch(self, batch_size: int, match_id: int):
         """
         Get a batch of frames from the video.
         params:
@@ -77,7 +77,13 @@ class VideoManagerBase(ABC):
             dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
             normalized_frame = self.normalize_frame(frame)
-            batch.append(VideoItem(frame=normalized_frame, annotated_frame=frame, timestamp=dt, frame_num=frame_num))
+            batch.append(
+                VideoItem(
+                    frame=normalized_frame,
+                    annotated_frame=frame,
+                    timestamp=dt,
+                    match_id=match_id,
+                    frame_num=frame_num))
 
         return batch
 
@@ -92,7 +98,7 @@ class VideoManagerBase(ABC):
         return resized
 
     @abstractmethod
-    def read_video(self, batch_size: int) -> Generator[List[VideoItem]]:
+    def read_video(self, batch_size: int, match_id: int) -> Generator[List[VideoItem]]:
         pass
 
     @abstractmethod

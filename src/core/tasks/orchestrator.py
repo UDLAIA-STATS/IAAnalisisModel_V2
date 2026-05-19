@@ -5,6 +5,7 @@ from pathlib import Path
 from sqlmodel import Session
 
 from core.repository.task_repository import TaskRepository
+from core.tasks.steps.analysis_steps import ObjectDetection
 from core.trackers import BallTracker, GoalTracker, PlayerTracker, TrackerManager, tracker_manager
 from core.video.video_manager import VideoManager
 from entities.models.app.analyze_request import AnalyzeRequest
@@ -32,7 +33,7 @@ class Orchestrator():
 
 
     
-    def run_task(self, request: AnalyzeRequest, session: Session, task_id: str):
+    def run_tasks(self, request: AnalyzeRequest, session: Session, task_id: str):
         task = TaskRepository.get_task(task_id, session)
 
         if task is None:
@@ -46,7 +47,7 @@ class Orchestrator():
         video_batching_step = TaskStep(
             task_id=task.id,
             name="Video Batching",
-            message="Iniciando análisis",
+            message="Dividiendo en batch el video",
             step_number=1
         )
 
@@ -56,14 +57,16 @@ class Orchestrator():
             match_id=request.match_id,
             video_path=Path(request.video_name),
             show=True)
-        batches = video_manager.read_video(int(settings.BATCH_SIZE))
+        batches = video_manager.read_video(int(settings.BATCH_SIZE), request.match_id)
 
         video_batching_step.state = States.COMPLETED
         TaskRepository.upsert_task_step(video_batching_step, session)
 
         tracker_manager = self._init_trackers()
+        object_detection = ObjectDetection() 
 
         
         for batch in batches:
             for video_item in batch:
-                pass
+                object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
+                

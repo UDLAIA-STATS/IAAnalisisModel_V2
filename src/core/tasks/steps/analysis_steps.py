@@ -1,8 +1,11 @@
 from sqlmodel import Session
 
 from core.trackers import TrackerManager
+from core.vision.color_recognizer import ColorRecognizer
 from entities.interfaces.app import AnalysisStepHandler
 from entities.models.app.video_item import VideoItem
+from core.video.annotators import player_annotator
+from core.repository import PlayerStatesRepository 
 
 ### Object detection --> Video Frame
 ### Number and color recognition --> Video Frame
@@ -16,29 +19,52 @@ from entities.models.app.video_item import VideoItem
 ### Data post processing
 ### Document uplaod --> Post
 
-
-
 class ObjectDetection(AnalysisStepHandler):
     name = "Object Detection"
     number_step = 1
 
     def execute(self, session: Session, **kwargs) -> bool:
-        # track_manager = TrackerManager(trackers=None)
-        # ball_tracker = BallTracker(tracker_config_file=None)
-        # goal_tracker = GoalTracker(tracker_config_file=None)
-        # player_tracker = PlayerTracker()
-
+        """
+        Execute the step and return the results.
+        Args:
+            session:
+            video_item: the video item type VideoItem
+            track_manager: the tracker manager type TrackerManager
+        """
         track_manager: TrackerManager = kwargs["track_manager"]
         video_item: VideoItem = kwargs["video_item"]
-        # ball_tracker = kwargs["ball_tracker"]
-        # goal_tracker = kwargs["goal_tracker"]
-        # player_tracker = kwargs["player_tracker"]
-        # track_manager.add_tracker(TrackManagerItem(tracker=ball_tracker, object_ids=[0]))
-        # track_manager.add_tracker(TrackManagerItem(tracker=goal_tracker, object_ids=[0]))
-        # track_manager.add_tracker(TrackManagerItem(tracker=player_tracker, object_ids=[0]))
-
         track_manager.execute_trackers(video_item, session=session)
-        
+        session.commit()
+
         return True
 
 
+class NumberAndColorRecognition(AnalysisStepHandler):
+    name = "Number and Color Recognition"
+    number_step = 2
+
+    def execute(self, session: Session, **kwargs) -> bool:
+        video_item: VideoItem = kwargs["video_item"]
+        states = PlayerStatesRepository.get_states_by_frame(
+            video_item.match_id,
+            video_item.frame_num,
+            session=session)
+        
+        for state in states:
+            x1, y1, x2, y2 = state.x1, state.y1, state.x2, state.y2
+            crop = video_item.frame.copy()
+            crop = crop[y1:y2, x1:x2]
+            rgb, hex = ColorRecognizer.extract_color(crop)
+            rgb_str = f"{rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}"
+
+            state.player.team_color = rgb_str
+            label = f"ID: {state.player.track_id} | {hex} | Conf: {state.confidence}"
+
+            video_item.annotated_frame = player_annotator.annotate(
+                annotated_frame=video_item.annotated_frame,
+                detections=None,
+                label=label
+            )
+
+
+        return True

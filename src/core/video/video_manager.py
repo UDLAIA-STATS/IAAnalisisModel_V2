@@ -7,7 +7,7 @@ from src.core.services.global_value_store import value_store
 
 
 class VideoManager(VideoManagerBase):
-    def read_video(self, batch_size: int):
+    def read_video(self, batch_size: int, match_id: int):
         if not self.check_video_state():
             logfire.info(f"[VideoManager] Cap was not opened, opening video {self.video_path}")
             self.cap.open(self.video_path.as_posix())
@@ -25,7 +25,7 @@ class VideoManager(VideoManagerBase):
 
         while frame_count < total_frames:
             to_read = min(batch_size, total_frames - frame_count)
-            batch = self.get_batch(to_read)
+            batch = self.get_batch(to_read, match_id)
 
             if not batch or len(batch) == 0:
                 break
