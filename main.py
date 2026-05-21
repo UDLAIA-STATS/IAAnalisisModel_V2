@@ -45,7 +45,7 @@ app = run_app()
 def main():
     try:
         logfire.info("Application starting")
-        uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
+        uvicorn.run("main:app", host="0.0.0.0", port=6070, reload=True)
     except Exception:
         logfire.error("Error starting application shutting down logfire")
     finally:

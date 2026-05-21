@@ -1,9 +1,9 @@
 from pathlib import Path
-from typing import Generator, override
+from typing import Generator, List, Type, override
 import logfire
 from supervision.detection.core import Detections
 
-from sqlmodel import Session
+from sqlmodel import SQLModel, Session
 
 from src.core.repository.goal_repository import GoalRepository
 from src.core.video import goal_annotator
@@ -20,40 +20,11 @@ class GoalTracker(DetectorBase):
     def __init__(self, tracker_config_file: Path | None, model: Path = MODEL_GOALS_PATH, type: DetectorTypes = DetectorTypes.DETECTION):
         super().__init__(model, tracker_config_file, type)
         self.classes = {0: goal_annotator}
+        self.types_map = {0: GoalModel}
 
     @override
-    def _extract_tracks_data(
-        self, filtered_detections: dict[int, Detections], frame_num: int, video_item: VideoItem
-    ) -> Generator[TrackData, None, None]:
-        for object_id, filtered_detection in filtered_detections.items():
-            annotator = self.classes[object_id]
-            annotator.set_detections(filtered_detection)
-
-            for i in range(len(filtered_detection)):
-                if filtered_detection is None:
-                    continue
-
-                x1, y1, x2, y2 = map(int, filtered_detection.xyxy[i])
-
-                if filtered_detection.confidence is None:
-                    logfire.warning(f"[GoalTracker] No confidence for object {object_id} in frame {frame_num}")
-                    conf = 0.3
-                else:
-                    conf = filtered_detection.confidence[i]
-
-                track_id = 0
-
-                if self.type == DetectorTypes.TRACKING and hasattr(filtered_detection, "track_id"):
-                    track_id = filtered_detection.track_id[i]  # type: ignore
-
-                video_item.annotated_frame = annotator.annotate(
-                    annotated_frame=video_item.annotated_frame, detections=filtered_detection, label=f"Conf: {conf}"
-                )
-
-                yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
-
-    @override
-    def _save_tracks(self, detected_tracks: Generator[TrackData, None, None], video_item: VideoItem, session: Session):
+    def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
+        goals_added = []
         for track in detected_tracks:
             goals = GoalRepository.get_goals_by_frame_num(video_item.match_id, video_item.frame_num, session)
 
@@ -69,5 +40,7 @@ class GoalTracker(DetectorBase):
                     confidence=track.confidence,
                 )
 
-                session.add(new_goal)
-                session.commit()
+                goals_added.append(new_goal)
+
+        session.add_all(goals_added)
+        session.flush()

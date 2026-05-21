@@ -10,6 +10,7 @@ dependencies = [
     "fastapi-cache2>=0.2.2",
     "logfire[fastapi]>=4.32.1",
     "matplotlib>=3.10.9",
+    "psycopg2>=2.9.12",
     "psycopg[binary]>=3.3.4",
     "scikit-learn>=1.8.0",
     "sqlmodel>=0.0.38",

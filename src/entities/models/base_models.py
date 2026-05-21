@@ -20,5 +20,5 @@ class AuditTable(SQLModel):
     )
 
 
-class AuditTableCompletedTable(AuditTable, table=True):
+class AuditTableCompletedTable(AuditTable):
     completed_at: datetime | None = Field(default=None, nullable=True)

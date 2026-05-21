@@ -13,7 +13,7 @@ class AnalysisStepHandler(ABC):
         super().__init__()
 
     @abstractmethod
-    def execute(self, session: Session, **kwargs) -> bool:
+    async def execute(self, session: Session, **kwargs) -> bool:
         """
         Execute the step and return the results.
         param video_id: the video id

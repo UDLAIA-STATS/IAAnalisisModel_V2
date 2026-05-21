@@ -25,6 +25,7 @@ class VideoManagerBase(ABC):
         self.ouput_images_dir = ANOTATED_OUTPUT_IMAGES / f"{match_id}"
         self.ouput_images_dir.mkdir(parents=True, exist_ok=True)
         self.frame_size = self.get_frame_size()
+        self.show = show
 
         self.writer = cv2.VideoWriter(
             self.output_video.absolute(),
@@ -33,9 +34,11 @@ class VideoManagerBase(ABC):
             (int(self.frame_size[0]), int(self.frame_size[1])),
         )
 
+
         if show:
-            cv2.namedWindow("Video", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("Video", int(self.frame_size[0]), int(self.frame_size[1]))
+            self.named_window = f"Annotated {self.video_path.name} - Match {self.match_id}"
+            cv2.namedWindow(self.named_window, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(self.named_window, int(self.frame_size[0]), int(self.frame_size[1]))
 
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()
@@ -55,6 +58,24 @@ class VideoManagerBase(ABC):
 
     def check_video_state(self):
         return self.cap.isOpened()
+    
+    def preview_frame(self, frame):
+        """
+        Muestra frame en pantalla.
+        Retorna False si usuario pide salir.
+        """
+        if not self.show:
+            return True
+
+        cv2.imshow(self.named_window, frame)
+
+        key = cv2.waitKey(1) & 0xFF
+
+        if key in (27, ord("q")):
+            return False
+
+        return True
+
 
     def get_batch(self, batch_size: int, match_id: int):
         """
@@ -112,3 +133,4 @@ class VideoManagerBase(ABC):
     def __exit__(self):
         self.cap.release()
         self.writer.release()
+        cv2.destroyAllWindows()

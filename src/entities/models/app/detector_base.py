@@ -1,17 +1,19 @@
 from pathlib import Path
-from typing import Generator, List, Sequence, Union
+import time
+from typing import Generator, List, Sequence, Type, Union
 
 import logfire
 from pydantic import BaseModel, ConfigDict
-from sqlmodel import Session
+from sqlmodel import SQLModel, Session
 import torch
 from ultralytics.models import YOLO
 from ultralytics.engine.results import Results
-
-from entities.models.app.track_data import TrackData
-from entities.models.app.video_item import VideoItem
-from entities.types.detector_types import DetectorTypes
 from supervision.detection.core import Detections
+
+from src.core.database import connection_manager
+from src.entities.models.app.track_data import TrackData
+from src.entities.models.app.video_item import VideoItem
+from src.entities.types.detector_types import DetectorTypes
 
 
 class DetectorBase:
@@ -30,6 +32,10 @@ class DetectorBase:
             self.tracker_config_file: str = tracker_config_file.as_posix()
 
         self.type: DetectorTypes = type
+        self.classes = {}
+        self.types_map = {
+            0: SQLModel
+        }
 
     def __init_model__(self, model: Path, half: bool = False):
         self.model: YOLO = YOLO(model.as_posix())
@@ -54,8 +60,8 @@ class DetectorBase:
         else:
             return self.model(frame, conf=0.3, iou=0.45, verbose=False, device=self.device)
 
-    def extract_detections(self, results: Sequence[Union[Results, Detections]], objects_ids: List[int]) -> dict[int, Detections]:
-        detections_map = {}
+    def extract_detections(self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem) -> dict[int, List[TrackData]]:
+        detections_map: dict[int, List[TrackData]] = {}
         detections = Detections.from_ultralytics(results[0])
 
         if len(detections) == 0:
@@ -63,41 +69,64 @@ class DetectorBase:
 
         for object_id in objects_ids:
             filtered_detections = detections[detections.class_id == object_id]
-            detections_map[object_id] = filtered_detections
+            annotator = self.classes[object_id]
+            annotator.set_detections(filtered_detections)
+
+            data = list(self._extract_tracks_data(filtered_detections, video_item)) # type: ignore
+            
+            if not object_id in detections_map:
+                detections_map[object_id] = data
+            else:
+                detections_map[object_id].extend(data)
 
         return detections_map
 
+    # TODO: At the return of the item the detection mixes with others objects, it needs to be separated
     def _extract_tracks_data(
-        self, filtered_detections: dict[int, Detections], frame_num: int, video_item: VideoItem
+        self, detections: Detections, video_item: VideoItem
     ) -> Generator[TrackData, None, None]:
-        for object_id, filtered_detection in filtered_detections.items():
-            for i in range(len(filtered_detection)):
-                if filtered_detection is None:
-                    continue
+        for i in range(len(detections)):
+            if detections is None:
+                continue
 
-                x1, y1, x2, y2 = map(int, filtered_detection.xyxy[i])
+            x1, y1, x2, y2 = map(int, detections.xyxy[i])
 
-                if filtered_detection.confidence is None:
-                    logfire.warning(f"[DetectorBase] No confidence for object {object_id} in frame {frame_num}")
-                    conf = 0.3
-                else:
-                    conf = filtered_detection.confidence[i]
+            if detections.confidence is None:
+                logfire.warning(f"[DetectorBase] No confidence for object in frame {video_item.frame_num} match id {video_item.match_id}")
+                conf = 0.3
+            else:
+                conf = detections.confidence[i]
 
+            if self.type == DetectorTypes.TRACKING:
+                track_id = detections.tracker_id[i] # type: ignore
+            else:
                 track_id = 0
 
-                if self.type == DetectorTypes.TRACKING and isinstance(filtered_detection, Results):
-                    track_id = filtered_detection.track_id[i]
+            yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
 
-                yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
+    def get_tracks(self, video_item: VideoItem, object_ids: List[int]):
+        with connection_manager.create_session() as session:
+            t0 = time.perf_counter()
+            detections = self.detect(video_item.frame)
+            t1 = time.perf_counter()
+            track_data = self.extract_detections(detections, object_ids, video_item)
+            t2 = time.perf_counter()
 
-    def get_tracks(self, video_item: VideoItem, object_ids: List[int], session: Session):
-        detections = self.detect(video_item.frame)
-        filtered_detections = self.extract_detections(detections, object_ids)
+            for object_id, data in track_data.items():
+                object = self.types_map[object_id]
+                self._save_tracks(data, video_item, object, session)
+            t3 = time.perf_counter()
 
-        track_data = self._extract_tracks_data(filtered_detections, video_item.frame_num, video_item)
-        self._save_tracks(track_data, video_item, session)
+            logfire.info(f"[DetectorBase] Detection time: {t1 - t0:.4f} seconds")
+            logfire.info(f"[DetectorBase] Extraction time: {t2 - t1:.4f} seconds")
+            logfire.info(f"[DetectorBase] Saving time: {t3 - t2:.4f} seconds")
 
-    def _save_tracks(self, detected_tracks: Generator[TrackData], video_item: VideoItem, session: Session):
+    def _save_tracks(
+            self,
+            detected_tracks: List[TrackData],
+            video_item: VideoItem,
+            object: Type[SQLModel],
+            session: Session):
         pass
 
 

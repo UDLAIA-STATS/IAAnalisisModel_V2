@@ -29,11 +29,11 @@ class AnnotatorServiceBase:
     def set_detections(self, detections: Detections):
         self.detections = detections
 
-    def annotate(self, annotated_frame: np.ndarray, detections: Optional[Detections], label: str):
+    def annotate(self, annotated_frame: np.ndarray, detections: Optional[Detections], labels: list[str]):
         if detections is None:
             detections = self.detections
 
         annotated_frame = self.box_annotator.annotate(scene=annotated_frame, detections=detections)
-        annotated_frame = self.label_annotator.annotate(scene=annotated_frame, detections=detections, labels=[label])  # type: ignore
+        annotated_frame = self.label_annotator.annotate(scene=annotated_frame, detections=detections, labels=labels)  # type: ignore
 
         return annotated_frame

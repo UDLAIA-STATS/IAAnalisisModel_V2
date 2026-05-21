@@ -19,10 +19,10 @@ ANOTATED_VIDEOS_DIR = ANNOTATED_FILES_DIR / "videos"
 ANOTATED_OUTPUT_IMAGES = ANNOTATED_FILES_DIR / "images"
 
 # METRICS
-REPORTS_DIR = OUTPUT_REPORTS_DIR / "reports"
-METRICS_DIR = REPORTS_DIR / "metrics"
-DETECTED_OBJECTS_METRICS_DIR = REPORTS_DIR / "detected_objects_metrics"
-MEMORY_TRACKER_DIR = REPORTS_DIR / "memory_tracker"
+METRICS_DIR = OUTPUT_REPORTS_DIR / "metrics"
+DETECTED_OBJECTS_METRICS_DIR = OUTPUT_REPORTS_DIR / "detected_objects_metrics"
+MEMORY_TRACKER_DIR = OUTPUT_REPORTS_DIR / "memory_tracker"
+TIME_REPORTS_DIR = OUTPUT_REPORTS_DIR / "time_reports"
 
 # MODELS
 MODELS_DIR = BASE_RES_DIR / "models"
@@ -69,6 +69,7 @@ def ensure_directories():
         BALL_CUSTOM_DATASET,
         MODELS_BACKUP_DIR,
         CUSTOM_MODELS,
+        TIME_REPORTS_DIR
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)

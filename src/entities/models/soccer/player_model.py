@@ -1,7 +1,7 @@
 from sqlmodel import Field, Relationship
 
-from entities.models.base_models import AuditTable, NumericIdModel
-from entities.models.soccer.soccer_base_models import BBoxModel, DynamicMovementModel, SoccerFrameData
+from src.entities.models.base_models import AuditTable, NumericIdModel
+from src.entities.models.soccer.soccer_base_models import BBoxModel, DynamicMovementModel, SoccerFrameData
 
 
 class PlayerModel(NumericIdModel, AuditTable, table=True):
@@ -28,14 +28,6 @@ class PlayerNumbers(NumericIdModel, AuditTable, table=True):
 
     player: PlayerModel = Relationship(back_populates="numbers")
 
-    __table_args__ = (
-        {
-            "indexes": [
-                {"columns": ["player_id", "frame_number"], "unique": True},
-            ]
-        },
-    )
-
 
 class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, DynamicMovementModel, table=True):
     __tablename__: str = "players_states"  # type: ignore
@@ -50,12 +42,3 @@ class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, Dynami
     ball_id: int | None = Field(foreign_key="ball_states.id", default=None, description="Id de la pelota si el jugador posee el balon", nullable=True)
 
     player: PlayerModel = Relationship(back_populates="states")
-
-    __table_args__ = (
-        {
-            "indexes": [
-                {"columns": ["player_id", "frame_number"], "unique": True},
-                {"columns": ["player_id", "timestamp_ms"]},
-            ]
-        },
-    )

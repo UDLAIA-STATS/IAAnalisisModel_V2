@@ -1,8 +1,9 @@
 from pathlib import Path
-from typing import Generator, override
+from typing import Generator, List, Type, override
 
 import logfire
-from sqlmodel import Session
+from matplotlib.pylab import f
+from sqlmodel import SQLModel, Session
 from supervision.detection.core import Detections
 
 from src.config.routes import BYTETRACK_CONFIG_PATH, PLAYER_MODEL_PATH
@@ -21,38 +22,11 @@ class PlayerTracker(DetectorBase):
     ):
         super().__init__(model, tracker_config_file, type)
         self.classes = {0: player_annotator}
+        self.types_map = {0: PlayerModel}
 
     @override
-    def _extract_tracks_data(
-        self, filtered_detections: dict[int, Detections], frame_num: int, video_item: VideoItem
-    ) -> Generator[TrackData, None, None]:
-        for object_id, filtered_detection in filtered_detections.items():
-            annotator = self.classes[object_id]
-            annotator.set_detections(filtered_detection)
-
-            for i in range(len(filtered_detection)):
-                if filtered_detection is None:
-                    continue
-
-                x1, y1, x2, y2 = map(int, filtered_detection.xyxy[i])
-
-                if filtered_detection.confidence is None:
-                    logfire.warning(f"[PlayerTracker] No confidence for object {object_id} in frame {frame_num}")
-                    conf = 0.3
-                else:
-                    conf = filtered_detection.confidence[i]
-
-                track_id = 0
-
-                if self.type == DetectorTypes.TRACKING and hasattr(filtered_detection, "track_id"):
-                    track_id = filtered_detection.track_id[i]  # type: ignore
-                else:
-                    logfire.error(f"[PlayerTracker] No track_id for player in frame {frame_num}")
-
-                yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
-
-    @override
-    def _save_tracks(self, detected_tracks: Generator[TrackData, None, None], video_item: VideoItem, session: Session):
+    def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
+        states = []
         for track_data in detected_tracks:
             x1, y1, x2, y2 = track_data.xyxy
 
@@ -60,8 +34,10 @@ class PlayerTracker(DetectorBase):
                 frame_number=video_item.frame_num, match_id=video_item.match_id, track_id=track_data.track_id, session=session
             )
 
-            if not player:
+            if player is None:
                 new_player = PlayerModel(match_id=video_item.match_id, track_id=track_data.track_id)
+                session.add(new_player)
+                session.flush()
                 new_state = PlayerState(
                     player_id=new_player.id,
                     frame_number=video_item.frame_num,
@@ -72,11 +48,9 @@ class PlayerTracker(DetectorBase):
                     timestamp_ms=int(video_item.timestamp),
                     confidence=track_data.confidence,
                 )
-                session.add(new_player)
-                session.add(new_state)
-                session.commit()
+                states.append(new_state)
 
-            if player and not state:
+            if player and state is None:
                 new_state = PlayerState(
                     player_id=player.id,
                     frame_number=video_item.frame_num,
@@ -87,4 +61,7 @@ class PlayerTracker(DetectorBase):
                     timestamp_ms=int(video_item.timestamp),
                     confidence=track_data.confidence,
                 )
-                session.add(new_state)
+                states.append(new_state)
+
+        session.add_all(states)
+        session.flush()

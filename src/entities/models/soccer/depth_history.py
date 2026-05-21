@@ -1,6 +1,6 @@
 from sqlmodel import Field
 
-from entities.models.base_models import AuditTable, NumericIdModel
+from src.entities.models.base_models import AuditTable, NumericIdModel
 
 
 class DepthHistory(NumericIdModel, AuditTable, table=True):

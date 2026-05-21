@@ -1,3 +1,6 @@
+import asyncio
+
+import logfire
 from sqlmodel import Session
 
 from src.core.trackers import TrackerManager
@@ -24,7 +27,7 @@ class ObjectDetection(AnalysisStepHandler):
     name = "Object Detection"
     number_step = 1
 
-    def execute(self, session: Session, **kwargs) -> bool:
+    async def execute(self, session: Session, **kwargs) -> bool:
         """
         Execute the step and return the results.
         Args:
@@ -34,30 +37,55 @@ class ObjectDetection(AnalysisStepHandler):
         """
         track_manager: TrackerManager = kwargs["track_manager"]
         video_item: VideoItem = kwargs["video_item"]
-        track_manager.execute_trackers(video_item, session=session)
-        session.commit()
+        
+        try:
+            await track_manager.execute_trackers(video_item)
 
-        return True
+            return True
+        except Exception as e:
+            session.rollback()
+            raise e
 
 
 class NumberAndColorRecognition(AnalysisStepHandler):
     name = "Number and Color Recognition"
     number_step = 2
 
-    def execute(self, session: Session, **kwargs) -> bool:
+    async def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]
         states = PlayerStatesRepository.get_states_by_frame(video_item.match_id, video_item.frame_num, session=session)
+        logfire.info(f"[NumberAndColorRecognition] Number of states: {len(states)}")
+        labels = []
 
-        for state in states:
-            x1, y1, x2, y2 = state.x1, state.y1, state.x2, state.y2
-            crop = video_item.frame.copy()
-            crop = crop[y1:y2, x1:x2]
-            rgb, hex = ColorRecognizer.extract_color(crop)
-            rgb_str = f"{rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}"
+        if len(states) == 0:
+            return True
 
-            state.player.team_color = rgb_str
-            label = f"ID: {state.player.track_id} | {hex} | Conf: {state.confidence}"
+        try:
+            for state in states:
+                x1, y1, x2, y2 = state.x1, state.y1, state.x2, state.y2
 
-            video_item.annotated_frame = player_annotator.annotate(annotated_frame=video_item.annotated_frame, detections=None, label=label)
+                if x1 is None or y1 is None or x2 is None or y2 is None:
+                    logfire.error(f"[NumberAndColorRecognition] No coordinates or coordinates incompleted for "
+                                  f"player {state.player.track_id} in frame {video_item.frame_num} in match {video_item.match_id}")
+                    continue
 
-        return True
+                crop = video_item.frame.copy()
+                crop = crop[int(y1):int(y2), int(x1):int(x2)]
+                rgb, hex = ColorRecognizer.extract_color(crop)
+                rgb_str = f"{rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}"
+
+                state.player.team_color = rgb_str
+                label = f"ID: {state.player.track_id} | {hex} | Conf: {state.confidence}"
+                labels.append(label)
+
+                session.add(state)
+                session.flush()
+
+            video_item.annotated_frame = player_annotator.annotate(
+                annotated_frame=video_item.annotated_frame, detections=None, labels=labels
+                )
+
+            return True
+        except Exception as e:
+            session.rollback()
+            raise e

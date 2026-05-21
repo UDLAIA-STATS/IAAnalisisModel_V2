@@ -12,21 +12,20 @@ class PlayerStatesRepository:
     def get_state_by_track_id(
         frame_number: int, match_id: int, track_id: int, session: Session
     ) -> Tuple[PlayerModel, PlayerState] | Tuple[None, None] | Tuple[PlayerModel, None]:
-        player_query = select(PlayerModel).where(PlayerModel.track_id == track_id and PlayerModel.match_id == match_id)
+        player_query = select(PlayerModel).where(PlayerModel.match_id == match_id).where(PlayerModel.track_id == track_id)
+        player = session.exec(player_query).first()
 
-        player_result = session.exec(player_query).first()
 
-        if player_result is None:
+        if player is None:
+            return None, None
+        
+        state_query = select(PlayerState).where(PlayerState.player_id == player.id, PlayerState.frame_number == frame_number)
+        result = session.exec(state_query).first()
+        
+        if result is None:
             return None, None
 
-        states_query = select(PlayerState).where(PlayerState.player_id == player_result.id and PlayerState.frame_number == frame_number)
-
-        states_result = session.exec(states_query).first()
-
-        if states_result is None:
-            return player_result, None
-
-        return player_result, states_result
+        return player, result
 
     @staticmethod
     def get_state_by_id(player_state_id: int, session: Session) -> PlayerState | None:
@@ -35,10 +34,13 @@ class PlayerStatesRepository:
 
     @staticmethod
     def get_states_by_frame(match_id: int, frame_number: int, session: Session) -> Sequence[PlayerState]:
-        query = select(PlayerState).join(PlayerModel, PlayerState.player_id == PlayerModel.id).where(PlayerState.frame_number == frame_number)
+        query = (
+            select(PlayerState)
+            .join(PlayerModel, PlayerState.player_id == PlayerModel.id)
+            .where(
+                PlayerState.frame_number == frame_number,
+                PlayerModel.match_id == match_id))
         results = session.exec(query).all()
-
-        logfire.info(f"[PlayerStatesRepository] get_player_states_by_frame_num: {len(results)}")
 
         if results is None or len(results) == 0:
             logfire.error(

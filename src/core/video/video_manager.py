@@ -37,10 +37,13 @@ class VideoManager(VideoManagerBase):
         if isinstance(frames, List):
             for frame in frames:
                 self.writer.write(frame)
+                self.preview_frame(frame)
                 if save_frame:
                     self._save_frame_as_image(frame_num, frame)
             return
 
         self.writer.write(frames)
+        self.preview_frame(frames)
+
         if save_frame:
             self._save_frame_as_image(frame_num, frames)

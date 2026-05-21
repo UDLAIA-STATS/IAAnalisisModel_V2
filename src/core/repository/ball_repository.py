@@ -14,6 +14,6 @@ class BallRepository:
 
     @staticmethod
     @lru_cache
-    def get_ball_by_match_id(match_id: int, session: Session) -> Sequence[BallState] | None:
+    def get_balls_by_match_id(match_id: int, session: Session) -> Sequence[BallState]:
         query = select(BallState).where(BallState.match_id == match_id)
         return session.exec(query).all()

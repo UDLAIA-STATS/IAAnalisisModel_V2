@@ -12,7 +12,7 @@ class PlayerRepository:
         return session.exec(query).first()
 
     @staticmethod
-    def get_players_by_match_id(match_id: int, session: Session) -> Sequence[PlayerModel] | None:
+    def get_players_by_match_id(match_id: int, session: Session) -> Sequence[PlayerModel]:
         query = select(PlayerModel).where(PlayerModel.match_id == match_id)
         return session.exec(query).all()
 
