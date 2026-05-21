@@ -16,12 +16,7 @@ async def run_analysis(
     body: AnalyzeRequest,
     session: Session = Depends(connection_manager.create_session),
 ):
-    task = Task(
-        match_id=body.match_id,
-        video_name=body.video_name,
-        state=States.PENDING,
-        user_id=body.user_id
-    )
+    task = Task(match_id=body.match_id, video_name=body.video_name, state=States.PENDING, user_id=body.user_id)
 
     TaskRepository.upsert_task(task, session)
     body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Partido corto 4.mp4"

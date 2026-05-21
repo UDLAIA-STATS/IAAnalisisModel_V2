@@ -73,6 +73,7 @@ def ensure_directories():
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
 
+
 def validate_model():
     for file in [
         BALL_MODEL_PATH,

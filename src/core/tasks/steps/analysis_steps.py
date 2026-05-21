@@ -5,19 +5,20 @@ from src.core.vision.color_recognizer import ColorRecognizer
 from src.entities.interfaces.app import AnalysisStepHandler
 from src.entities.models.app.video_item import VideoItem
 from src.core.video.annotators import player_annotator
-from src.core.repository import PlayerStatesRepository 
+from src.core.repository import PlayerStatesRepository
 
-### Object detection --> Video Frame
-### Number and color recognition --> Video Frame
-### Physics computation --> Video Frame
+# Object detection --> Video Frame
+# Number and color recognition --> Video Frame
+# Physics computation --> Video Frame
 
-### Team assigment --> DB
-### Ball assignment --> Db
-### Goal interaction --> DB
+# Team assigment --> DB
+# Ball assignment --> Db
+# Goal interaction --> DB
 
-### Heatmap --> DB
-### Data post processing
-### Document uplaod --> Post
+# Heatmap --> DB
+# Data post processing
+# Document uplaod --> Post
+
 
 class ObjectDetection(AnalysisStepHandler):
     name = "Object Detection"
@@ -45,11 +46,8 @@ class NumberAndColorRecognition(AnalysisStepHandler):
 
     def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]
-        states = PlayerStatesRepository.get_states_by_frame(
-            video_item.match_id,
-            video_item.frame_num,
-            session=session)
-        
+        states = PlayerStatesRepository.get_states_by_frame(video_item.match_id, video_item.frame_num, session=session)
+
         for state in states:
             x1, y1, x2, y2 = state.x1, state.y1, state.x2, state.y2
             crop = video_item.frame.copy()
@@ -60,10 +58,6 @@ class NumberAndColorRecognition(AnalysisStepHandler):
             state.player.team_color = rgb_str
             label = f"ID: {state.player.track_id} | {hex} | Conf: {state.confidence}"
 
-            video_item.annotated_frame = player_annotator.annotate(
-                annotated_frame=video_item.annotated_frame,
-                detections=None,
-                label=label
-            )
+            video_item.annotated_frame = player_annotator.annotate(annotated_frame=video_item.annotated_frame, detections=None, label=label)
 
         return True

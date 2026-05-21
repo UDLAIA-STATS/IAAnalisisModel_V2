@@ -1,5 +1,6 @@
 from enum import StrEnum
 
+
 class DetectorTypes(StrEnum):
     """Enum for the types of detectors."""
 

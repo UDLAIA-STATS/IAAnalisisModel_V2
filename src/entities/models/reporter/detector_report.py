@@ -1,4 +1,4 @@
-from sqlmodel import Field, SQLModel
+from sqlmodel import Field
 
 from entities.models.base_models import NumericIdModel
 from entities.models.soccer.soccer_base_models import BBoxModel

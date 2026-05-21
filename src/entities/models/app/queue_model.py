@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import List
 
 from sqlmodel import Field, Relationship
-from entities.models.base_models import AuditTableCompletedTable, AuditTable, NumericIdModel, UUIDModel
+from entities.models.base_models import AuditTableCompletedTable, NumericIdModel, UUIDModel
 from src.entities.types.states import States
 
 
@@ -14,6 +14,7 @@ class TaskStep(AuditTableCompletedTable, NumericIdModel, table=True):
 
     task_id: str = Field(foreign_key="task.id", index=True)
     task: "Task" = Relationship(back_populates="details")
+
 
 class Task(UUIDModel, AuditTableCompletedTable, table=True):
     match_id: int = Field(index=True)

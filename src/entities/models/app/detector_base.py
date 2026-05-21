@@ -12,14 +12,10 @@ from entities.models.app.track_data import TrackData
 from entities.models.app.video_item import VideoItem
 from entities.types.detector_types import DetectorTypes
 from supervision.detection.core import Detections
-from ultralytics.engine.results import Results
 
-class DetectorBase():
-    def __init__(
-            self,
-            model: Path,
-            tracker_config_file: Path | None,
-            type: DetectorTypes = DetectorTypes.DETECTION):
+
+class DetectorBase:
+    def __init__(self, model: Path, tracker_config_file: Path | None, type: DetectorTypes = DetectorTypes.DETECTION):
         """
         Initialize detector class to get tracks in base using a YOLO model with detection only
         or tracking and detection.
@@ -54,11 +50,7 @@ class DetectorBase():
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         if self.type == DetectorTypes.TRACKING and self.tracker_config_file is not None:
-            return self.model.track(
-                frame,
-                tracker=self.tracker_config_file,
-                persist=True, conf=0.5, iou=0.6,
-                verbose=False, device=self.device)
+            return self.model.track(frame, tracker=self.tracker_config_file, persist=True, conf=0.5, iou=0.6, verbose=False, device=self.device)
         else:
             return self.model(frame, conf=0.3, iou=0.45, verbose=False, device=self.device)
 
@@ -76,10 +68,8 @@ class DetectorBase():
         return detections_map
 
     def _extract_tracks_data(
-            self,
-            filtered_detections: dict[int, Detections],
-            frame_num: int,
-            video_item: VideoItem) -> Generator[TrackData, None, None]:
+        self, filtered_detections: dict[int, Detections], frame_num: int, video_item: VideoItem
+    ) -> Generator[TrackData, None, None]:
         for object_id, filtered_detection in filtered_detections.items():
             for i in range(len(filtered_detection)):
                 if filtered_detection is None:
@@ -97,12 +87,8 @@ class DetectorBase():
 
                 if self.type == DetectorTypes.TRACKING and isinstance(filtered_detection, Results):
                     track_id = filtered_detection.track_id[i]
-                
-                yield TrackData(
-                    xyxy=(x1, y1, x2, y2),
-                    track_id=track_id,
-                    confidence=conf    
-                )
+
+                yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
 
     def get_tracks(self, video_item: VideoItem, object_ids: List[int], session: Session):
         detections = self.detect(video_item.frame)
@@ -113,6 +99,7 @@ class DetectorBase():
 
     def _save_tracks(self, detected_tracks: Generator[TrackData], video_item: VideoItem, session: Session):
         pass
+
 
 class TrackManagerItem(BaseModel):
     tracker: DetectorBase

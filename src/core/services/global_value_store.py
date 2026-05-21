@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 from typing_extensions import Self
 
+
 class GlobalValueStore:
     _instance = None
 

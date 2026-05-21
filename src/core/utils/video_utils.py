@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def extract_player_torso(frame: np.ndarray, bbox: np.ndarray) -> np.ndarray:
     x1, y1, x2, y2 = bbox
     h, w = frame.shape[:2]

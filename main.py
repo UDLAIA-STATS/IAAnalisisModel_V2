@@ -7,7 +7,8 @@ import uvicorn
 
 from src.core.database import connection_manager
 from src.presentation.api.v1.analyze_router import router as analyze_router
-from src.config.routes import ensure_directories
+from src.config.routes import ensure_directories, validate_model
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -15,6 +16,7 @@ async def lifespan(app: FastAPI):
     print("Creating tables...")
     connection_manager.create_database()
     ensure_directories()
+    validate_model()
     yield
     connection_manager.dispose()
     print("Application is shutting down...")
@@ -32,7 +34,7 @@ def run_app() -> FastAPI:
 
     logfire.configure()
     logfire.instrument_fastapi(app)
-    
+
     app.include_router(analyze_router)
     return app
 
@@ -44,10 +46,11 @@ def main():
     try:
         logfire.info("Application starting")
         uvicorn.run(app, host="0.0.0.0", port=8000, workers=4)
-    except Exception as e:
-        logfire.error(f"Error starting application shutting down logfire")
+    except Exception:
+        logfire.error("Error starting application shutting down logfire")
     finally:
         logfire.shutdown()
+
 
 if __name__ == "__main__":
     main()

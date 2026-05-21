@@ -37,7 +37,6 @@ class VideoManagerBase(ABC):
             cv2.namedWindow("Video", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("Video", int(self.frame_size[0]), int(self.frame_size[1]))
 
-
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()
 
@@ -76,13 +75,7 @@ class VideoManagerBase(ABC):
             dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
             normalized_frame = self.normalize_frame(frame)
-            batch.append(
-                VideoItem(
-                    frame=normalized_frame,
-                    annotated_frame=frame,
-                    timestamp=dt,
-                    match_id=match_id,
-                    frame_num=frame_num))
+            batch.append(VideoItem(frame=normalized_frame, annotated_frame=frame, timestamp=dt, match_id=match_id, frame_num=frame_num))
 
         return batch
 
@@ -111,7 +104,6 @@ class VideoManagerBase(ABC):
             save_frame: save the frame as an image if True
         """
         pass
-
 
     def _save_frame_as_image(self, frame_num: int, frame: MatLike):
         image_path = self.ouput_images_dir / f"{frame_num}_{uuid.uuid4()}.jpg"

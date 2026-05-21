@@ -6,7 +6,7 @@ from sqlmodel import Session
 
 from src.core.repository.task_repository import TaskRepository
 from src.core.tasks.steps.analysis_steps import NumberAndColorRecognition, ObjectDetection
-from src.core.trackers import BallTracker, GoalTracker, PlayerTracker, TrackerManager, tracker_manager
+from src.core.trackers import BallTracker, GoalTracker, PlayerTracker, TrackerManager
 from src.core.video.video_manager import VideoManager
 
 from src.config.configuration import settings
@@ -16,12 +16,11 @@ from src.entities.models.app.detector_base import TrackManagerItem
 from src.entities.models.app.queue_model import Task, TaskStep
 from src.entities.types.states import States
 
-class Orchestrator():
-    
+
+class Orchestrator:
     def __init__(self):
         super().__init__()
 
-    
     def _init_trackers(self) -> TrackerManager:
         track_manager = TrackerManager(trackers=None)
         ball_tracker = BallTracker(tracker_config_file=None)
@@ -33,32 +32,18 @@ class Orchestrator():
 
         return track_manager
 
-
-    
     def run_tasks(self, request: AnalyzeRequest, session: Session, task_id: str):
         task = TaskRepository.get_task(task_id, session)
 
         if task is None:
-            task = Task(
-                match_id=request.match_id,
-                video_name=request.video_name,
-                user_id=request.user_id
-            )
+            task = Task(match_id=request.match_id, video_name=request.video_name, user_id=request.user_id)
             TaskRepository.upsert_task(task, session)
 
-        video_batching_step = TaskStep(
-            task_id=task.id,
-            name="Video Batching",
-            message="Dividiendo en batch el video",
-            step_number=1
-        )
+        video_batching_step = TaskStep(task_id=task.id, name="Video Batching", message="Dividiendo en batch el video", step_number=1)
 
         video_batching_step = TaskRepository.upsert_task_step(video_batching_step, session)
 
-        video_manager = VideoManager(
-            match_id=request.match_id,
-            video_path=Path(request.video_name),
-            show=True)
+        video_manager = VideoManager(match_id=request.match_id, video_path=Path(request.video_name), show=True)
         batches = video_manager.read_video(int(settings.BATCH_SIZE), request.match_id)
 
         video_batching_step.state = States.COMPLETED
@@ -75,7 +60,7 @@ class Orchestrator():
             task_id=task.id,
             name="Processing Batch",
             message="Procesando batch, detectando objetos, reconociendo color, números y calculando distancias y velocidades",
-            step_number=2
+            step_number=2,
         )
 
         try:

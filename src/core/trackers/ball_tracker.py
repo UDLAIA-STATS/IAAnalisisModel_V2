@@ -17,20 +17,14 @@ from src.core.video import ball_annotator
 
 
 class BallTracker(DetectorBase):
-    def __init__(
-            self,
-            tracker_config_file: Path | None,
-            model: Path = BALL_MODEL_PATH,
-            type: DetectorTypes = DetectorTypes.DETECTION):
+    def __init__(self, tracker_config_file: Path | None, model: Path = BALL_MODEL_PATH, type: DetectorTypes = DetectorTypes.DETECTION):
         super().__init__(model, tracker_config_file, type)
-        self.classes = {
-            0: ball_annotator
-        }
+        self.classes = {0: ball_annotator}
 
     @override
     def _extract_tracks_data(
-        self, filtered_detections: dict[int, Detections],
-        frame_num: int, video_item: VideoItem) -> Generator[TrackData, None, None]:
+        self, filtered_detections: dict[int, Detections], frame_num: int, video_item: VideoItem
+    ) -> Generator[TrackData, None, None]:
         for object_id, filtered_detection in filtered_detections.items():
             annotator = self.classes[object_id]
             annotator.set_detections(filtered_detection)
@@ -50,28 +44,19 @@ class BallTracker(DetectorBase):
                 track_id = 0
 
                 if self.type == DetectorTypes.TRACKING and hasattr(filtered_detection, "track_id"):
-                    track_id = filtered_detection.track_id[i] # type: ignore
+                    track_id = filtered_detection.track_id[i]  # type: ignore
 
                 video_item.annotated_frame = annotator.annotate(
-                    annotated_frame=video_item.annotated_frame,
-                    detections=filtered_detection,
-                    label=f"Conf: {conf}"
-                )
-                
-
-                yield TrackData(
-                    xyxy=(x1, y1, x2, y2),
-                    track_id=track_id,
-                    confidence=conf    
+                    annotated_frame=video_item.annotated_frame, detections=filtered_detection, label=f"Conf: {conf}"
                 )
 
+                yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
 
     @override
     def _save_tracks(self, detected_tracks: Generator[TrackData, None, None], video_item: VideoItem, session: Session):
         for track in detected_tracks:
-            ball = BallRepository.get_ball_by_frame_num(
-                video_item.match_id, video_item.frame_num, session)
-            
+            ball = BallRepository.get_ball_by_frame_num(video_item.match_id, video_item.frame_num, session)
+
             if not ball:
                 new_ball = BallState(
                     match_id=video_item.match_id,
@@ -85,4 +70,3 @@ class BallTracker(DetectorBase):
                 )
 
                 session.add(new_ball)
-                

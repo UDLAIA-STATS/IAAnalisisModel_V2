@@ -15,21 +15,16 @@ from src.entities.models.app.video_item import VideoItem
 from src.entities.models.soccer.goal_model import GoalModel
 from src.entities.types.detector_types import DetectorTypes
 
+
 class GoalTracker(DetectorBase):
-    def __init__(
-            self,
-            tracker_config_file: Path | None,
-            model: Path = MODEL_GOALS_PATH,
-            type: DetectorTypes = DetectorTypes.DETECTION):
+    def __init__(self, tracker_config_file: Path | None, model: Path = MODEL_GOALS_PATH, type: DetectorTypes = DetectorTypes.DETECTION):
         super().__init__(model, tracker_config_file, type)
-        self.classes = {
-            0: goal_annotator
-        }
+        self.classes = {0: goal_annotator}
 
     @override
     def _extract_tracks_data(
-        self, filtered_detections: dict[int, Detections],
-        frame_num: int, video_item: VideoItem) -> Generator[TrackData, None, None]:
+        self, filtered_detections: dict[int, Detections], frame_num: int, video_item: VideoItem
+    ) -> Generator[TrackData, None, None]:
         for object_id, filtered_detection in filtered_detections.items():
             annotator = self.classes[object_id]
             annotator.set_detections(filtered_detection)
@@ -49,27 +44,19 @@ class GoalTracker(DetectorBase):
                 track_id = 0
 
                 if self.type == DetectorTypes.TRACKING and hasattr(filtered_detection, "track_id"):
-                    track_id = filtered_detection.track_id[i] # type: ignore
+                    track_id = filtered_detection.track_id[i]  # type: ignore
 
                 video_item.annotated_frame = annotator.annotate(
-                    annotated_frame=video_item.annotated_frame,
-                    detections=filtered_detection,
-                    label=f"Conf: {conf}"
+                    annotated_frame=video_item.annotated_frame, detections=filtered_detection, label=f"Conf: {conf}"
                 )
 
-                yield TrackData(
-                    xyxy=(x1, y1, x2, y2),
-                    track_id=track_id,
-                    confidence=conf    
-                )
-
+                yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
 
     @override
     def _save_tracks(self, detected_tracks: Generator[TrackData, None, None], video_item: VideoItem, session: Session):
         for track in detected_tracks:
-            goals = GoalRepository.get_goals_by_frame_num(
-                video_item.match_id, video_item.frame_num, session)
-            
+            goals = GoalRepository.get_goals_by_frame_num(video_item.match_id, video_item.frame_num, session)
+
             if goals is None:
                 new_goal = GoalModel(
                     match_id=video_item.match_id,

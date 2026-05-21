@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from cv2.typing import MatLike
 
+
 class VideoItem(BaseModel):
     match_id: int
     frame: Union[MatLike, np.ndarray]
@@ -13,4 +14,3 @@ class VideoItem(BaseModel):
     timestamp: float
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=False)
-
