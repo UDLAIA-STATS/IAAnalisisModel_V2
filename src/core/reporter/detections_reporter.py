@@ -33,23 +33,20 @@ class DetectionsReporter:
 
         report_name = DETECTED_OBJECTS_METRICS_DIR / f"report_{match_id}_{uuid.uuid4()}.csv"
 
-        file = open(report_name, "w")
-        csv_writer = csv.writer(file)
+        with open(report_name, mode="w", newline="", encoding="utf-8") as file:
+            csv_writer = csv.writer(file)
 
-        csv_writer.writerow([
-            "frame_number", "object_type", "track_id", 
-            "bbox", "confidence", "shirt_color", "shirt_number",
-            "speed", "distance", "timestamp_ms"])
-
-        for row in report_rows:
             csv_writer.writerow([
-                row.frame_number, row.object_type, row.track_id, 
-                row.bbox, row.confidence, row.shirt_color, row.shirt_number,
-                row.speed, row.distance, row.timestamp_ms
-            ])
+                "frame_number", "object_type", "track_id", 
+                "bbox", "confidence", "shirt_color", "shirt_number",
+                "speed", "distance", "timestamp_ms"])
 
-        file.flush()
-        file.close()
+            for row in report_rows:
+                csv_writer.writerow([
+                    row.frame_number, row.object_type, row.track_id, 
+                    row.bbox, row.confidence, row.shirt_color, row.shirt_number,
+                    row.speed, row.distance, row.timestamp_ms
+                ])
 
     def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:
         balls = BallRepository.get_balls_by_match_id(match_id, session)

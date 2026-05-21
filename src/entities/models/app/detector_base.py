@@ -1,5 +1,4 @@
 from pathlib import Path
-import time
 from typing import Generator, List, Sequence, Type, Union
 
 import logfire
@@ -56,9 +55,14 @@ class DetectorBase:
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         if self.type == DetectorTypes.TRACKING and self.tracker_config_file is not None:
-            return self.model.track(frame, tracker=self.tracker_config_file, persist=True, conf=0.5, iou=0.6, verbose=False, device=self.device)
+            return self.model.track(
+                frame, tracker=self.tracker_config_file,
+                persist=True, conf=0.5, iou=0.6,
+                verbose=False, device=self.device)
         else:
-            return self.model(frame, conf=0.3, iou=0.45, verbose=False, device=self.device)
+            return self.model(
+                frame, conf=0.3, iou=0.45,
+                verbose=False, device=self.device)
 
     def extract_detections(self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem) -> dict[int, List[TrackData]]:
         detections_map: dict[int, List[TrackData]] = {}
@@ -106,20 +110,12 @@ class DetectorBase:
 
     def get_tracks(self, video_item: VideoItem, object_ids: List[int]):
         with connection_manager.create_session() as session:
-            t0 = time.perf_counter()
             detections = self.detect(video_item.frame)
-            t1 = time.perf_counter()
             track_data = self.extract_detections(detections, object_ids, video_item)
-            t2 = time.perf_counter()
 
             for object_id, data in track_data.items():
                 object = self.types_map[object_id]
                 self._save_tracks(data, video_item, object, session)
-            t3 = time.perf_counter()
-
-            logfire.info(f"[DetectorBase] Detection time: {t1 - t0:.4f} seconds")
-            logfire.info(f"[DetectorBase] Extraction time: {t2 - t1:.4f} seconds")
-            logfire.info(f"[DetectorBase] Saving time: {t3 - t2:.4f} seconds")
 
     def _save_tracks(
             self,

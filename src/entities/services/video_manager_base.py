@@ -24,21 +24,28 @@ class VideoManagerBase(ABC):
         self.match_id = match_id
         self.ouput_images_dir = ANOTATED_OUTPUT_IMAGES / f"{match_id}"
         self.ouput_images_dir.mkdir(parents=True, exist_ok=True)
-        self.frame_size = self.get_frame_size()
         self.show = show
 
+        normalized_frame = self.normalize_frame(self.get_first_frame())
+        w, h = normalized_frame.shape[:2]
+
         self.writer = cv2.VideoWriter(
-            self.output_video.absolute(),
+            self.output_video.as_posix(),
             cv2.VideoWriter.fourcc(*"mp4v"),
             self.get_fps(),
-            (int(self.frame_size[0]), int(self.frame_size[1])),
+            (int(w), int(h)),
         )
+        self.writer.open(
+            self.output_video.as_posix(),
+            cv2.VideoWriter.fourcc(*"mp4v"),
+            self.get_fps(),
+            (int(w), int(h)))
 
 
         if show:
             self.named_window = f"Annotated {self.video_path.name} - Match {self.match_id}"
             cv2.namedWindow(self.named_window, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(self.named_window, int(self.frame_size[0]), int(self.frame_size[1]))
+            cv2.resizeWindow(self.named_window, int(w), int(h))
 
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()
@@ -129,8 +136,11 @@ class VideoManagerBase(ABC):
     def _save_frame_as_image(self, frame_num: int, frame: MatLike):
         image_path = self.ouput_images_dir / f"{frame_num}_{uuid.uuid4()}.jpg"
         cv2.imwrite(image_path.as_posix(), frame)
-
-    def __exit__(self):
+    
+    def close(self):
         self.cap.release()
         self.writer.release()
         cv2.destroyAllWindows()
+
+    def __exit__(self, exc_type, exc, tb):
+        self.close()
