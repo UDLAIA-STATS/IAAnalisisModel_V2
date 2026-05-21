@@ -1,18 +1,18 @@
 from pathlib import Path
-from typing import Generator, List, override
+from typing import Generator, override
 
 import logfire
 from sqlmodel import Session
 from supervision.detection.core import Detections
 
-from config.routes import BYTETRACK_CONFIG_PATH, PLAYER_MODEL_PATH
-from core.repository.player_states_repository import PlayerStatesRepository
-from entities.models.app.detector_base import DetectorBase
-from entities.models.app.track_data import TrackData
-from entities.models.app.video_item import VideoItem
-from entities.models.soccer.player_model import PlayerModel, PlayerState
-from entities.types.detector_types import DetectorTypes
-from core.video import player_annotator
+from src.config.routes import BYTETRACK_CONFIG_PATH, PLAYER_MODEL_PATH
+from src.core.repository.player_states_repository import PlayerStatesRepository
+from src.entities.models.app.detector_base import DetectorBase
+from src.entities.models.app.track_data import TrackData
+from src.entities.models.app.video_item import VideoItem
+from src.entities.models.soccer.player_model import PlayerModel, PlayerState
+from src.entities.types.detector_types import DetectorTypes
+from src.core.video import player_annotator
 
 class PlayerTracker(DetectorBase):
 
@@ -71,7 +71,7 @@ class PlayerTracker(DetectorBase):
                 session=session
             )
 
-            if not player and not state:
+            if not player:
                 new_player = PlayerModel(
                     match_id=video_item.match_id,
                     track_id=track_data.track_id
@@ -88,6 +88,7 @@ class PlayerTracker(DetectorBase):
                 )
                 session.add(new_player)
                 session.add(new_state)
+                session.commit()
             
             if player and not state:
                 new_state = PlayerState(

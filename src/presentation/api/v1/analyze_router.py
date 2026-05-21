@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from core.repository.task_repository import TaskRepository
+from core.tasks.orchestrator import Orchestrator
 from src.core.database import connection_manager
 from src.entities.models.app.analyze_request import AnalyzeRequest
 from src.entities.models.app.queue_model import Task
@@ -23,6 +24,10 @@ async def run_analysis(
     )
 
     TaskRepository.upsert_task(task, session)
+    body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Partido corto 4.mp4"
+
+    orchestrator = Orchestrator()
+    orchestrator.run_tasks(body, session, task.id)
 
     return {
         "status": "queued",

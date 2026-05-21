@@ -5,15 +5,15 @@ from supervision.detection.core import Detections
 
 from sqlmodel import Session
 
-from core.repository.goal_repository import GoalRepository
-from core.video import goal_annotator
+from src.core.repository.goal_repository import GoalRepository
+from src.core.video import goal_annotator
 
-from config.routes import MODEL_GOALS_PATH
-from entities.models.app.detector_base import DetectorBase
-from entities.models.app.track_data import TrackData
-from entities.models.app.video_item import VideoItem
-from entities.models.soccer.goal_model import GoalModel
-from entities.types.detector_types import DetectorTypes
+from src.config.routes import MODEL_GOALS_PATH
+from src.entities.models.app.detector_base import DetectorBase
+from src.entities.models.app.track_data import TrackData
+from src.entities.models.app.video_item import VideoItem
+from src.entities.models.soccer.goal_model import GoalModel
+from src.entities.types.detector_types import DetectorTypes
 
 class GoalTracker(DetectorBase):
     def __init__(
@@ -83,3 +83,4 @@ class GoalTracker(DetectorBase):
                 )
 
                 session.add(new_goal)
+                session.commit()

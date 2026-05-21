@@ -1,5 +1,5 @@
-from entities.services.annotator_service import AnnotatorServiceBase
-from entities.utils.singleton import Singleton
+from src.entities.services.annotator_service import AnnotatorServiceBase
+from src.entities.utils.singleton import Singleton
 
 
 class PlayerAnnotator(AnnotatorServiceBase, metaclass=Singleton):

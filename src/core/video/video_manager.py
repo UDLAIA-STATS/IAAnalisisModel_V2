@@ -1,8 +1,8 @@
 from typing import List, Union
 from cv2.typing import MatLike
-
-from entities.services.video_manager_base import VideoManagerBase
 import logfire
+
+from src.entities.services.video_manager_base import VideoManagerBase
 from src.core.services.global_value_store import value_store
 
 

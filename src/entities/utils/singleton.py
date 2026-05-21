@@ -1,7 +1,6 @@
 from abc import ABCMeta
 import threading
 
-
 class Singleton(type):
     _instances = {}
     _locks = {}

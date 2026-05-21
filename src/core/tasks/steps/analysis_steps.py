@@ -1,11 +1,11 @@
 from sqlmodel import Session
 
-from core.trackers import TrackerManager
-from core.vision.color_recognizer import ColorRecognizer
-from entities.interfaces.app import AnalysisStepHandler
-from entities.models.app.video_item import VideoItem
-from core.video.annotators import player_annotator
-from core.repository import PlayerStatesRepository 
+from src.core.trackers import TrackerManager
+from src.core.vision.color_recognizer import ColorRecognizer
+from src.entities.interfaces.app import AnalysisStepHandler
+from src.entities.models.app.video_item import VideoItem
+from src.core.video.annotators import player_annotator
+from src.core.repository import PlayerStatesRepository 
 
 ### Object detection --> Video Frame
 ### Number and color recognition --> Video Frame

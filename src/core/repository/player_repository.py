@@ -2,7 +2,7 @@ from typing import Sequence
 
 from sqlmodel import Session, select
 
-from entities.models.soccer.player_model import PlayerModel
+from src.entities.models.soccer.player_model import PlayerModel
 
 
 class PlayerRepository:

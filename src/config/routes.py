@@ -1,5 +1,5 @@
 from pathlib import Path
-from config.configuration import settings
+from src.config.configuration import settings
 
 # BASE
 BASE_RES_DIR = Path("./res")

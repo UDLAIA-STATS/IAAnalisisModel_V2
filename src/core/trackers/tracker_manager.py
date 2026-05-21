@@ -2,9 +2,9 @@ from typing import List, Optional
 
 from sqlmodel import Session
 
-from entities.models.app.detector_base import TrackManagerItem
-from entities.models.app.video_item import VideoItem
-from entities.utils.singleton import Singleton
+from src.entities.models.app.detector_base import TrackManagerItem
+from src.entities.models.app.video_item import VideoItem
+from src.entities.utils.singleton import Singleton
 
 
 class TrackerManager(metaclass=Singleton):

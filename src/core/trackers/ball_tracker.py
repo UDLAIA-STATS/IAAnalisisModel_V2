@@ -5,15 +5,15 @@ from supervision.detection.core import Detections
 import logfire
 from sqlmodel import Session
 
-from config.routes import BALL_MODEL_PATH
-from core.repository.ball_repository import BallRepository
-from entities.models.app.detector_base import DetectorBase
-from entities.models.app.track_data import TrackData
-from entities.models.app.video_item import VideoItem
-from entities.models.soccer.ball_model import BallState
-from entities.types.detector_types import DetectorTypes
+from src.config.routes import BALL_MODEL_PATH
+from src.core.repository.ball_repository import BallRepository
+from src.entities.models.app.detector_base import DetectorBase
+from src.entities.models.app.track_data import TrackData
+from src.entities.models.app.video_item import VideoItem
+from src.entities.models.soccer.ball_model import BallState
+from src.entities.types.detector_types import DetectorTypes
 
-from core.video import ball_annotator
+from src.core.video import ball_annotator
 
 
 class BallTracker(DetectorBase):
@@ -85,3 +85,4 @@ class BallTracker(DetectorBase):
                 )
 
                 session.add(new_ball)
+                

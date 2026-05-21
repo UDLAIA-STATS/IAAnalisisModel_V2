@@ -3,7 +3,7 @@ import traceback
 import logfire
 from sqlmodel import SQLModel, Session, QueuePool, create_engine
 
-from config.configuration import settings
+from src.config.configuration import settings
 
 
 class ConnectionManager:

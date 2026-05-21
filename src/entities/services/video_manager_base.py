@@ -6,10 +6,9 @@ from cv2 import VideoCapture
 import cv2
 from cv2.typing import MatLike
 import logfire
-import numpy as np
 
-from config.routes import ANOTATED_OUTPUT_IMAGES, ANOTATED_VIDEOS_DIR
-from entities.models.app.video_item import VideoItem
+from src.config.routes import ANOTATED_OUTPUT_IMAGES, ANOTATED_VIDEOS_DIR
+from src.entities.models.app.video_item import VideoItem
 
 
 class VideoManagerBase(ABC):

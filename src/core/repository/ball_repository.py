@@ -3,7 +3,7 @@ from typing import Sequence
 
 from sqlmodel import Session, select
 
-from entities.models.soccer.ball_model import BallState
+from src.entities.models.soccer.ball_model import BallState
 
 
 class BallRepository:

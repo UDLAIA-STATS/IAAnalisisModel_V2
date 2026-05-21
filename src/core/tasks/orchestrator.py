@@ -1,18 +1,20 @@
-
-
 from pathlib import Path
+import traceback
 
+import logfire
 from sqlmodel import Session
 
-from core.repository.task_repository import TaskRepository
-from core.tasks.steps.analysis_steps import NumberAndColorRecognition, ObjectDetection
-from core.trackers import BallTracker, GoalTracker, PlayerTracker, TrackerManager, tracker_manager
-from core.video.video_manager import VideoManager
-from entities.models.app.analyze_request import AnalyzeRequest
-from config.configuration import settings
-from entities.models.app.detector_base import TrackManagerItem
-from entities.models.app.queue_model import Task, TaskStep
-from entities.types.states import States
+from src.core.repository.task_repository import TaskRepository
+from src.core.tasks.steps.analysis_steps import NumberAndColorRecognition, ObjectDetection
+from src.core.trackers import BallTracker, GoalTracker, PlayerTracker, TrackerManager, tracker_manager
+from src.core.video.video_manager import VideoManager
+
+from src.config.configuration import settings
+
+from src.entities.models.app.analyze_request import AnalyzeRequest
+from src.entities.models.app.detector_base import TrackManagerItem
+from src.entities.models.app.queue_model import Task, TaskStep
+from src.entities.types.states import States
 
 class Orchestrator():
     
@@ -76,11 +78,19 @@ class Orchestrator():
             step_number=2
         )
 
-        for batch in batches:
-            for video_item in batch:
-                object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
-                color_number_recognizer.execute(session=session, video_item=video_item)
-            
+        try:
+            for batch in batches:
+                for video_item in batch:
+                    object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
+                    color_number_recognizer.execute(session=session, video_item=video_item)
+        except Exception as e:
+            processing_batch_step.state = States.FAILED
+            processing_batch_step.message = f"Error procesando batch: {str(e)}"
+            TaskRepository.upsert_task_step(processing_batch_step, session)
+            logfire.error(f"Error processing batch: {traceback.format_exc()}")
+            raise e
+
         processing_batch_step.state = States.COMPLETED
         TaskRepository.upsert_task_step(processing_batch_step, session)
 
+        session.close()
