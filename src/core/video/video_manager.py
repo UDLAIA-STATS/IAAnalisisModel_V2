@@ -32,7 +32,7 @@ class VideoManager(VideoManagerBase):
 
             frame_count += len(batch)
             yield batch
-        
+
         self.close()
 
     def write(self, frames: Union[List[MatLike], MatLike], frame_num: int, save_frame: bool = False):

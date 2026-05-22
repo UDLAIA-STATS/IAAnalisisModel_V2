@@ -35,12 +35,7 @@ class VideoManagerBase(ABC):
             self.get_fps(),
             (int(w), int(h)),
         )
-        self.writer.open(
-            self.output_video.as_posix(),
-            cv2.VideoWriter.fourcc(*"mp4v"),
-            self.get_fps(),
-            (int(w), int(h)))
-
+        self.writer.open(self.output_video.as_posix(), cv2.VideoWriter.fourcc(*"mp4v"), self.get_fps(), (int(w), int(h)))
 
         if show:
             self.named_window = f"Annotated {self.video_path.name} - Match {self.match_id}"
@@ -65,7 +60,7 @@ class VideoManagerBase(ABC):
 
     def check_video_state(self):
         return self.cap.isOpened()
-    
+
     def preview_frame(self, frame):
         """
         Muestra frame en pantalla.
@@ -82,7 +77,6 @@ class VideoManagerBase(ABC):
             return False
 
         return True
-
 
     def get_batch(self, batch_size: int, match_id: int):
         """
@@ -136,7 +130,7 @@ class VideoManagerBase(ABC):
     def _save_frame_as_image(self, frame_num: int, frame: MatLike):
         image_path = self.ouput_images_dir / f"{frame_num}_{uuid.uuid4()}.jpg"
         cv2.imwrite(image_path.as_posix(), frame)
-    
+
     def close(self):
         self.cap.release()
         self.writer.release()

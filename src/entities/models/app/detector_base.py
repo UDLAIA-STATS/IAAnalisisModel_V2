@@ -32,9 +32,7 @@ class DetectorBase:
 
         self.type: DetectorTypes = type
         self.classes = {}
-        self.types_map = {
-            0: SQLModel
-        }
+        self.types_map = {0: SQLModel}
 
     def __init_model__(self, model: Path, half: bool = False):
         self.model: YOLO = YOLO(model.as_posix())
@@ -55,16 +53,13 @@ class DetectorBase:
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         if self.type == DetectorTypes.TRACKING and self.tracker_config_file is not None:
-            return self.model.track(
-                frame, tracker=self.tracker_config_file,
-                persist=True, conf=0.5, iou=0.6,
-                verbose=False, device=self.device)
+            return self.model.track(frame, tracker=self.tracker_config_file, persist=True, conf=0.5, iou=0.6, verbose=False, device=self.device)
         else:
-            return self.model(
-                frame, conf=0.3, iou=0.45,
-                verbose=False, device=self.device)
+            return self.model(frame, conf=0.3, iou=0.45, verbose=False, device=self.device)
 
-    def extract_detections(self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem) -> dict[int, List[TrackData]]:
+    def extract_detections(
+        self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
+    ) -> dict[int, List[TrackData]]:
         detections_map: dict[int, List[TrackData]] = {}
         detections = Detections.from_ultralytics(results[0])
 
@@ -76,9 +71,9 @@ class DetectorBase:
             annotator = self.classes[object_id]
             annotator.set_detections(filtered_detections)
 
-            data = list(self._extract_tracks_data(filtered_detections, video_item)) # type: ignore
-            
-            if not object_id in detections_map:
+            data = list(self._extract_tracks_data(filtered_detections, video_item))  # type: ignore
+
+            if object_id not in detections_map:
                 detections_map[object_id] = data
             else:
                 detections_map[object_id].extend(data)
@@ -86,9 +81,7 @@ class DetectorBase:
         return detections_map
 
     # TODO: At the return of the item the detection mixes with others objects, it needs to be separated
-    def _extract_tracks_data(
-        self, detections: Detections, video_item: VideoItem
-    ) -> Generator[TrackData, None, None]:
+    def _extract_tracks_data(self, detections: Detections, video_item: VideoItem) -> Generator[TrackData, None, None]:
         for i in range(len(detections)):
             if detections is None:
                 continue
@@ -102,7 +95,7 @@ class DetectorBase:
                 conf = detections.confidence[i]
 
             if self.type == DetectorTypes.TRACKING:
-                track_id = detections.tracker_id[i] # type: ignore
+                track_id = detections.tracker_id[i]  # type: ignore
             else:
                 track_id = 0
 
@@ -116,15 +109,10 @@ class DetectorBase:
             for object_id, data in track_data.items():
                 object = self.types_map[object_id]
                 self._save_tracks(data, video_item, object, session)
-            
+
             session.commit()
 
-    def _save_tracks(
-            self,
-            detected_tracks: List[TrackData],
-            video_item: VideoItem,
-            object: Type[SQLModel],
-            session: Session):
+    def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: Type[SQLModel], session: Session):
         pass
 
 

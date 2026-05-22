@@ -3,8 +3,7 @@ from typing import Sequence, Tuple
 import logfire
 from sqlmodel import Session, select
 
-from src.entities.models.soccer.player_model import (
-    PlayerModel, PlayerState)
+from src.entities.models.soccer.player_model import PlayerModel, PlayerState
 
 
 class PlayerStatesRepository:
@@ -15,13 +14,12 @@ class PlayerStatesRepository:
         player_query = select(PlayerModel).where(PlayerModel.match_id == match_id).where(PlayerModel.track_id == track_id)
         player = session.exec(player_query).first()
 
-
         if player is None:
             return None, None
-        
+
         state_query = select(PlayerState).where(PlayerState.player_id == player.id, PlayerState.frame_number == frame_number)
         result = session.exec(state_query).first()
-        
+
         if result is None:
             return None, None
 
@@ -37,9 +35,8 @@ class PlayerStatesRepository:
         query = (
             select(PlayerState)
             .join(PlayerModel, PlayerState.player_id == PlayerModel.id)
-            .where(
-                PlayerState.frame_number == frame_number,
-                PlayerModel.match_id == match_id))
+            .where(PlayerState.frame_number == frame_number, PlayerModel.match_id == match_id)
+        )
         results = session.exec(query).all()
 
         if results is None or len(results) == 0:

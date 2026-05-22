@@ -1,8 +1,6 @@
 from pathlib import Path
-from typing import Generator, List, Type, override
-from supervision.detection.core import Detections
+from typing import List, override
 
-import logfire
 from sqlmodel import SQLModel, Session
 
 from src.config.routes import BALL_MODEL_PATH

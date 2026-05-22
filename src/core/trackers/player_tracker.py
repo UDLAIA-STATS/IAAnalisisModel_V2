@@ -1,10 +1,7 @@
 from pathlib import Path
-from typing import Generator, List, Type, override
+from typing import List, override
 
-import logfire
-from matplotlib.pylab import f
 from sqlmodel import SQLModel, Session
-from supervision.detection.core import Detections
 
 from src.config.routes import BYTETRACK_CONFIG_PATH, PLAYER_MODEL_PATH
 from src.core.repository.player_states_repository import PlayerStatesRepository
@@ -26,14 +23,13 @@ class PlayerTracker(DetectorBase):
 
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
-        # states = []
+        states = []
         for track_data in detected_tracks:
             x1, y1, x2, y2 = track_data.xyxy
 
             player, state = PlayerStatesRepository.get_state_by_track_id(
                 frame_number=video_item.frame_num, match_id=video_item.match_id, track_id=track_data.track_id, session=session
             )
-
 
             if player is None:
                 new_player = PlayerModel(match_id=video_item.match_id, track_id=track_data.track_id)
@@ -49,8 +45,9 @@ class PlayerTracker(DetectorBase):
                     timestamp_ms=int(video_item.timestamp),
                     confidence=track_data.confidence,
                 )
-                session.add(new_state)
-                session.flush()
+                states.append(new_state)
+                # session.add(new_state)
+                # session.flush()
                 continue
 
             if player and state is None:
@@ -64,8 +61,9 @@ class PlayerTracker(DetectorBase):
                     timestamp_ms=int(video_item.timestamp),
                     confidence=track_data.confidence,
                 )
-                session.add(new_state)
-                session.flush()
+                states.append(new_state)
+                # session.add(new_state)
+                # session.flush()
 
-        # session.add_all(states)
-        # session.flush()
+        session.add_all(states)
+        session.flush()

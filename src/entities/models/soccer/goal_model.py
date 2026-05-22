@@ -1,4 +1,3 @@
-
 from sqlmodel import Field
 
 from src.entities.models.base_models import AuditTable, NumericIdModel

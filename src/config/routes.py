@@ -69,7 +69,7 @@ def ensure_directories():
         BALL_CUSTOM_DATASET,
         MODELS_BACKUP_DIR,
         CUSTOM_MODELS,
-        TIME_REPORTS_DIR
+        TIME_REPORTS_DIR,
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)

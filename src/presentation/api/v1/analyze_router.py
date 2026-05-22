@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import APIRouter, Depends
 import logfire
 from sqlmodel import Session

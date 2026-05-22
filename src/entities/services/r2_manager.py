@@ -1,9 +1,8 @@
 import boto3
 from botocore.config import Config
-from botocore.exceptions import BotoCoreError, ClientError, ReadTimeoutError
-from tenacity import retry, stop_after_attempt, wait_exponential, wait_incrementing
 
 from src.config.configuration import settings
+
 
 class R2Manager:
     def __init__(self):

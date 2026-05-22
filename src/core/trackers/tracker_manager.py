@@ -1,14 +1,13 @@
-import asyncio
 from typing import List, Optional
 from concurrent.futures import ThreadPoolExecutor
 
-from sqlmodel import Session
 
 from src.entities.models.app.detector_base import TrackManagerItem
 from src.entities.models.app.video_item import VideoItem
 from src.entities.utils.singleton import Singleton
 
 executor = ThreadPoolExecutor(max_workers=3)
+
 
 class TrackerManager(metaclass=Singleton):
     def __init__(self, trackers: Optional[List[TrackManagerItem]]) -> None:

@@ -1,10 +1,8 @@
 from typing import override
 
-import logfire
 from supervision import Detections
 
 from src.entities.services.annotator_service import AnnotatorServiceBase
-from src.entities.utils.singleton import Singleton
 
 
 class PlayerAnnotator(AnnotatorServiceBase):
@@ -30,7 +28,7 @@ class BallAnnotator(AnnotatorServiceBase):
 class GoalAnnotator(AnnotatorServiceBase):
     def __init__(self, anotator_name: str = "Goal", hex_color: str = "#CF9260", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.5):
         super().__init__(anotator_name, hex_color, thickness, text_thickness, text_scale)
-    
+
     @override
     def set_detections(self, detections: Detections):
         return super().set_detections(detections)

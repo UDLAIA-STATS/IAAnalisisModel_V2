@@ -10,6 +10,7 @@ from src.core.repository.ball_repository import BallRepository
 from src.core.repository.goal_repository import GoalRepository
 from src.core.repository.player_repository import PlayerRepository
 
+
 class ReportRow(BaseModel):
     frame_number: int
     object_type: str
@@ -22,8 +23,8 @@ class ReportRow(BaseModel):
     distance: float = 0.0
     timestamp_ms: int
 
-class DetectionsReporter:
 
+class DetectionsReporter:
     def generate_report(self, match_id: int, session: Session):
         report_rows: List[ReportRow] = []
 
@@ -36,17 +37,25 @@ class DetectionsReporter:
         with open(report_name, mode="w", newline="", encoding="utf-8") as file:
             csv_writer = csv.writer(file)
 
-            csv_writer.writerow([
-                "frame_number", "object_type", "track_id", 
-                "bbox", "confidence", "shirt_color", "shirt_number",
-                "speed", "distance", "timestamp_ms"])
+            csv_writer.writerow(
+                ["frame_number", "object_type", "track_id", "bbox", "confidence", "shirt_color", "shirt_number", "speed", "distance", "timestamp_ms"]
+            )
 
             for row in report_rows:
-                csv_writer.writerow([
-                    row.frame_number, row.object_type, row.track_id, 
-                    row.bbox, row.confidence, row.shirt_color, row.shirt_number,
-                    row.speed, row.distance, row.timestamp_ms
-                ])
+                csv_writer.writerow(
+                    [
+                        row.frame_number,
+                        row.object_type,
+                        row.track_id,
+                        row.bbox,
+                        row.confidence,
+                        row.shirt_color,
+                        row.shirt_number,
+                        row.speed,
+                        row.distance,
+                        row.timestamp_ms,
+                    ]
+                )
 
     def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:
         balls = BallRepository.get_balls_by_match_id(match_id, session)
@@ -112,5 +121,6 @@ class DetectionsReporter:
             )
 
         return report_rows
+
 
 reporter = DetectionsReporter()

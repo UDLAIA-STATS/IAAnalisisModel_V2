@@ -1,7 +1,5 @@
 from pathlib import Path
-from typing import Generator, List, Type, override
-import logfire
-from supervision.detection.core import Detections
+from typing import List, override
 
 from sqlmodel import SQLModel, Session
 

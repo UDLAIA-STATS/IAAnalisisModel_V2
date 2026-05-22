@@ -2,7 +2,7 @@ from pathlib import Path
 import traceback
 
 import logfire
-from sqlmodel import Session
+import tqdm
 
 from src.core.database import connection_manager
 from src.core.reporter.time_reporter import ProcessTimeReporter
@@ -20,6 +20,7 @@ from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 
 # S3 Connection Manager
+
 
 class Orchestrator:
     def __init__(self):
@@ -70,7 +71,7 @@ class Orchestrator:
             )
 
             try:
-                for batch in batches:
+                for batch in tqdm.tqdm(batches, total=video_manager.get_total_frames() // int(settings.BATCH_SIZE)):
                     for video_item in batch:
                         logfire.info("[Orchestator] Detecting items")
                         time_reporter.start("Object Detection")
@@ -82,7 +83,6 @@ class Orchestrator:
                         color_number_recognizer.execute(session=session, video_item=video_item)
                         time_reporter.stop("Color and Number Recognition")
                         session.commit()
-                    
 
             except Exception as e:
                 processing_batch_step.state = StatesModel.FAILED
@@ -102,10 +102,8 @@ class Orchestrator:
             reporter_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(reporter_step, session)
 
-
             processing_batch_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(processing_batch_step, session)
 
             time_reporter.stop("Video Analysis (General)")
             time_reporter.publish()
-
