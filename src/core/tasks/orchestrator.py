@@ -100,7 +100,18 @@ class Orchestrator:
                 step_number=3,
             )
             TaskRepository.upsert_task_step(validate_step, session)
-            PlayerValidator().validate(request.match_id, video_manager.get_total_frames(), session)
+            
+            try:
+
+                PlayerValidator().validate(request.match_id, video_manager.get_total_frames(), session)
+            except Exception as e:
+                validate_step.state = StatesModel.FAILED
+                validate_step.message = f"Error validando jugadores: {str(e)}"
+                TaskRepository.upsert_task_step(validate_step, session)
+                logfire.error(f"Error validating players: {traceback.format_exc()}")
+                time_reporter.stop("Validando Jugadores")
+                raise e
+            
             validate_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(validate_step, session)
             time_reporter.stop("Validando Jugadores")

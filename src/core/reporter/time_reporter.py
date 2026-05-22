@@ -17,6 +17,10 @@ class ProcessTimeReporter:
         self._create_report_file(match_id)
         self.stats = defaultdict(lambda: {"count": 0, "total": 0.0, "min": float("inf"), "max": 0.0})
 
+
+    def __exit__(self, exc_type, exc, tb):
+        self.publish()
+
     def _create_report_file(self, match_id: int):
         try:
             self.report_file = Path(TIME_REPORTS_DIR, f"time_report_{match_id}.json")
