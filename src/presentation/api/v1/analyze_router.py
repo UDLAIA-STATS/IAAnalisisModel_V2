@@ -26,9 +26,10 @@ async def run_analysis(
     body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Partido corto 4.mp4"
 
     orchestrator = Orchestrator()
-    asyncio.create_task(
-        orchestrator.run_tasks(body, task.id)
-    )
+    orchestrator.run_tasks(body, task.id)
+    # asyncio.create_task(
+    #     orchestrator.run_tasks(body, task.id)
+    # )
 
     return {
         "status": "queued",

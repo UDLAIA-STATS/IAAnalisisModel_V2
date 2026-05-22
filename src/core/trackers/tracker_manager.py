@@ -20,19 +20,6 @@ class TrackerManager(metaclass=Singleton):
     def add_tracker(self, item: TrackManagerItem) -> None:
         self.trackers.append(item)
 
-    async def execute_trackers(self, video_item: VideoItem):
+    def execute_trackers(self, video_item: VideoItem):
         for item in self.trackers:
             item.tracker.get_tracks(video_item=video_item, object_ids=item.object_ids)
-        # loop = asyncio.get_running_loop()
-
-        # tasks = [
-        #     loop.run_in_executor(
-        #         executor,
-        #         item.tracker.get_tracks,
-        #         video_item,
-        #         item.object_ids
-        #     ) for item in self.trackers
-        # ]
-
-        # await asyncio.gather(*tasks)
-

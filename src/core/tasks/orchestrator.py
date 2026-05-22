@@ -19,6 +19,8 @@ from src.entities.models.app.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 
+# S3 Connection Manager
+
 class Orchestrator:
     def __init__(self):
         super().__init__()
@@ -34,7 +36,7 @@ class Orchestrator:
 
         return track_manager
 
-    async def run_tasks(self, request: AnalyzeRequest, task_id: str):
+    def run_tasks(self, request: AnalyzeRequest, task_id: str):
         with connection_manager.create_session() as session:
             task = TaskRepository.get_task(task_id, session)
 
@@ -72,12 +74,12 @@ class Orchestrator:
                     for video_item in batch:
                         logfire.info("[Orchestator] Detecting items")
                         time_reporter.start("Object Detection")
-                        await object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
+                        object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
                         session.commit()
                         time_reporter.stop("Object Detection")
                         logfire.info("[Orchestator] Color and number recognition")
                         time_reporter.start("Color and Number Recognition")
-                        await color_number_recognizer.execute(session=session, video_item=video_item)
+                        color_number_recognizer.execute(session=session, video_item=video_item)
                         time_reporter.stop("Color and Number Recognition")
                         session.commit()
                     

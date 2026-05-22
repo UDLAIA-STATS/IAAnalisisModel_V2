@@ -116,6 +116,8 @@ class DetectorBase:
             for object_id, data in track_data.items():
                 object = self.types_map[object_id]
                 self._save_tracks(data, video_item, object, session)
+            
+            session.commit()
 
     def _save_tracks(
             self,

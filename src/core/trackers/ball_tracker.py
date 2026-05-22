@@ -23,7 +23,6 @@ class BallTracker(DetectorBase):
 
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
-        balls_added = []
         for track in detected_tracks:
             ball = BallRepository.get_ball_by_frame_num(video_item.match_id, video_item.frame_num, session)
 
@@ -38,8 +37,6 @@ class BallTracker(DetectorBase):
                     timestamp_ms=int(video_item.timestamp),
                     confidence=track.confidence,
                 )
-
-                balls_added.append(new_ball)
-
-        session.add_all(balls_added)
-        session.flush()
+                session.add(new_ball)
+                session.flush()
+                continue

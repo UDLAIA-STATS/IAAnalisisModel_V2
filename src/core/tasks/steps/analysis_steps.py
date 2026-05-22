@@ -27,7 +27,7 @@ class ObjectDetection(AnalysisStepHandler):
     name = "Object Detection"
     number_step = 1
 
-    async def execute(self, session: Session, **kwargs) -> bool:
+    def execute(self, session: Session, **kwargs) -> bool:
         """
         Execute the step and return the results.
         Args:
@@ -39,7 +39,7 @@ class ObjectDetection(AnalysisStepHandler):
         video_item: VideoItem = kwargs["video_item"]
         
         try:
-            await track_manager.execute_trackers(video_item)
+            track_manager.execute_trackers(video_item)
 
             return True
         except Exception as e:
@@ -51,7 +51,7 @@ class NumberAndColorRecognition(AnalysisStepHandler):
     name = "Number and Color Recognition"
     number_step = 2
 
-    async def execute(self, session: Session, **kwargs) -> bool:
+    def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]
         states = PlayerStatesRepository.get_states_by_frame(video_item.match_id, video_item.frame_num, session=session)
         logfire.info(f"[NumberAndColorRecognition] Number of states: {len(states)}")

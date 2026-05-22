@@ -24,7 +24,7 @@ class GoalTracker(DetectorBase):
 
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
-        goals_added = []
+        # goals_added = []
         for track in detected_tracks:
             goals = GoalRepository.get_goals_by_frame_num(video_item.match_id, video_item.frame_num, session)
 
@@ -39,8 +39,8 @@ class GoalTracker(DetectorBase):
                     timestamp_ms=int(video_item.timestamp),
                     confidence=track.confidence,
                 )
+                session.add(new_goal)
+                session.flush()
 
-                goals_added.append(new_goal)
-
-        session.add_all(goals_added)
-        session.flush()
+        # session.add_all(goals_added)
+        # session.flush()
