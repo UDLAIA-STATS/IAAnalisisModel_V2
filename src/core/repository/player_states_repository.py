@@ -45,3 +45,36 @@ class PlayerStatesRepository:
                 f"{frame_number} and match id {match_id} in database"
             )
         return results
+
+    @staticmethod
+    def get_states_by_frame_range(match_id: int, min_frame: int, max_frame: int, session: Session) -> Sequence[PlayerState]:
+        query = (
+            select(PlayerState)
+            .join(PlayerModel, PlayerState.player_id == PlayerModel.id)
+            .where(
+                PlayerState.frame_number >= min_frame,
+                PlayerState.frame_number <= max_frame,
+                PlayerModel.match_id == match_id)
+            .order_by(PlayerState.frame_number)
+        )
+        return session.exec(query).all()
+    
+    @staticmethod
+    def merge_states(keep_player_id: int, remove_player_id: int, session: Session):
+        states = session.exec(
+            select(PlayerState)
+            .where(PlayerState.player_id == remove_player_id)
+        ).all()
+
+        for state in states:
+            state.player_id = keep_player_id
+            session.add(state)
+        
+        duplicate_player = session.get(
+            PlayerModel, remove_player_id
+        )
+
+        if duplicate_player:
+            session.delete(duplicate_player)
+        
+        session.flush()

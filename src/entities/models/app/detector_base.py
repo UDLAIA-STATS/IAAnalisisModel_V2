@@ -53,9 +53,19 @@ class DetectorBase:
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         if self.type == DetectorTypes.TRACKING and self.tracker_config_file is not None:
-            return self.model.track(frame, tracker=self.tracker_config_file, persist=True, conf=0.5, iou=0.6, verbose=False, device=self.device)
+            return self.model.track(
+                frame,
+                tracker=self.tracker_config_file,
+                persist=True,
+                conf=0.5,
+                iou=0.6,
+                imgsz=640,
+                verbose=False,
+                device=self.device)
         else:
-            return self.model(frame, conf=0.3, iou=0.45, verbose=False, device=self.device)
+            return self.model(
+                frame, conf=0.3, iou=0.45,
+                imgsz=640, verbose=False, device=self.device)
 
     def extract_detections(
         self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem

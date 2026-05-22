@@ -4,6 +4,7 @@ import traceback
 import logfire
 import tqdm
 
+from core.services.player_validator import PlayerValidator
 from src.core.database import connection_manager
 from src.core.reporter.time_reporter import ProcessTimeReporter
 from src.core.repository.task_repository import TaskRepository
@@ -90,12 +91,26 @@ class Orchestrator:
                 TaskRepository.upsert_task_step(processing_batch_step, session)
                 logfire.error(f"Error processing batch: {traceback.format_exc()}")
                 raise e
+            
+            time_reporter.start("Validando Jugadores")
+            validate_step = TaskStep(
+                task_id=task.id,
+                name="Validando Jugadores",
+                message="Validando Jugadores",
+                step_number=3,
+            )
+            TaskRepository.upsert_task_step(validate_step, session)
+            PlayerValidator().validate(request.match_id, video_manager.get_total_frames(), session)
+            validate_step.state = StatesModel.COMPLETED
+            TaskRepository.upsert_task_step(validate_step, session)
+            time_reporter.stop("Validando Jugadores")
+
 
             reporter_step = TaskStep(
                 task_id=task.id,
                 name="Generating Report",
                 message="Generando reporte",
-                step_number=3,
+                step_number=4,
             )
             TaskRepository.upsert_task_step(reporter_step, session)
             detection_reporter.generate_report(request.match_id, session)
