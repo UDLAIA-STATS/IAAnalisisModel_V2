@@ -7,7 +7,7 @@ from src.entities.services.annotator_service import AnnotatorServiceBase
 
 class PlayerAnnotator(AnnotatorServiceBase):
     def __init__(
-        self, anotator_name: str = "Player", hex_color: str = "#420D96", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.5
+        self, anotator_name: str = "Player", hex_color: str = "#420D96", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.4
     ):
         super().__init__(anotator_name, hex_color, thickness, text_thickness, text_scale)
 

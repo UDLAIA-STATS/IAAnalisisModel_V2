@@ -20,3 +20,8 @@ class PlayerRepository:
     def get_player_by_id(player_id: int, session: Session) -> PlayerModel | None:
         query = select(PlayerModel).where(PlayerModel.id == player_id)
         return session.exec(query).first()
+
+    @staticmethod
+    def upsert_player(player: PlayerModel, session: Session) -> None:
+        session.add(player)
+        session.flush()

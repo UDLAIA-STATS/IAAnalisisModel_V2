@@ -26,8 +26,10 @@ class VideoManagerBase(ABC):
         self.ouput_images_dir.mkdir(parents=True, exist_ok=True)
         self.show = show
 
-        normalized_frame = self.normalize_frame(self.get_first_frame())
-        w, h = normalized_frame.shape[:2]
+        first_frame = self.get_first_frame()
+        h, w = first_frame.shape[:2]
+        self.writing_width = w
+        self.writing_height = h
 
         self.writer = cv2.VideoWriter(
             self.output_video.as_posix(),
@@ -35,12 +37,11 @@ class VideoManagerBase(ABC):
             self.get_fps(),
             (int(w), int(h)),
         )
-        self.writer.open(self.output_video.as_posix(), cv2.VideoWriter.fourcc(*"mp4v"), self.get_fps(), (int(w), int(h)))
-
+ 
         if show:
             self.named_window = f"Annotated {self.video_path.name} - Match {self.match_id}"
             cv2.namedWindow(self.named_window, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(self.named_window, int(w), int(h))
+            cv2.resizeWindow(self.named_window, int(w * 1.5), int(h * 1.5))
 
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()
@@ -96,20 +97,9 @@ class VideoManagerBase(ABC):
 
             dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-            normalized_frame = self.normalize_frame(frame)
-            batch.append(VideoItem(frame=normalized_frame, annotated_frame=frame, timestamp=dt, match_id=match_id, frame_num=frame_num))
+            batch.append(VideoItem(frame=frame, annotated_frame=frame, timestamp=dt, match_id=match_id, frame_num=frame_num))
 
         return batch
-
-    def normalize_frame(self, frame: MatLike, target_size=640) -> MatLike:
-        h, w = frame.shape[:2]
-
-        scale = max(target_size / min(h, w), 1.0)
-        new_w = int(w * scale)
-        new_h = int(h * scale)
-
-        resized = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-        return resized
 
     @abstractmethod
     def read_video(self, batch_size: int, match_id: int) -> Generator[List[VideoItem]]:

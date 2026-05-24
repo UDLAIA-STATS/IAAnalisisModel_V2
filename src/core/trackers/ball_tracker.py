@@ -1,5 +1,8 @@
 from pathlib import Path
-from typing import List, override
+from typing import List, Sequence, Union, override
+import logfire
+from ultralytics.engine.results import Results
+from supervision.detection.core import Detections
 
 from sqlmodel import SQLModel, Session
 
@@ -18,6 +21,42 @@ class BallTracker(DetectorBase):
     def __init__(self, tracker_config_file: Path | None, model: Path = BALL_MODEL_PATH, type: DetectorTypes = DetectorTypes.DETECTION):
         super().__init__(model, tracker_config_file, type)
         self.classes = {0: ball_annotator}
+
+    @override
+    def detect(self, frame) -> Sequence[Union[Results, Detections]]:
+        """Detect objects in a frame."""
+        return self.model(
+            frame,
+            conf=0.3,
+            verbose=False,
+            iou=0.45,
+            device=self.device,
+        )
+    
+    @override
+    def extract_detections(
+        self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
+    ) -> dict[int, List[TrackData]]:
+        detections_map: dict[int, List[TrackData]] = {}
+        detections = Detections.from_ultralytics(results[0])
+
+        if len(detections) == 0:
+            return {}
+
+        for object_id in objects_ids:
+            filtered_detections = detections[detections.class_id == object_id]
+            logfire.info(f"[BallTracker] Number of detections: {len(filtered_detections)}")
+            annotator = self.classes[object_id]
+            annotator.set_detections(filtered_detections)
+
+            data = list(self._extract_tracks_data(filtered_detections, video_item))  # type: ignore
+
+            if object_id not in detections_map:
+                detections_map[object_id] = data
+            else:
+                detections_map[object_id].extend(data)
+
+        return detections_map
 
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):

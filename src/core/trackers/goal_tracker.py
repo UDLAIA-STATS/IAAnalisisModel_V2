@@ -1,5 +1,8 @@
 from pathlib import Path
-from typing import List, override
+from typing import List, Sequence, Union, override
+from ultralytics.engine.results import Results
+from supervision.detection.core import Detections
+
 
 from sqlmodel import SQLModel, Session
 
@@ -19,6 +22,17 @@ class GoalTracker(DetectorBase):
         super().__init__(model, tracker_config_file, type)
         self.classes = {0: goal_annotator}
         self.types_map = {0: GoalModel}
+
+    @override
+    def detect(self, frame) -> Sequence[Union[Results, Detections]]:
+        """Detect objects in a frame."""
+        return self.model(
+            frame,
+            conf=0.15,
+            verbose=False,
+            iou=0.45,
+            device=self.device,
+        )
 
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):

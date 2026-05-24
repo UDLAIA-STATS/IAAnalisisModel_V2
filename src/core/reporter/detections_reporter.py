@@ -2,6 +2,7 @@ import csv
 from typing import List
 import uuid
 
+import logfire
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -56,6 +57,8 @@ class DetectionsReporter:
                         row.timestamp_ms,
                     ]
                 )
+        
+        logfire.info(f"[DetectionsReporter] Report generated: {report_name.as_posix()}")
 
     def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:
         balls = BallRepository.get_balls_by_match_id(match_id, session)

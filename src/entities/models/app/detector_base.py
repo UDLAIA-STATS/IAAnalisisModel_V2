@@ -59,13 +59,14 @@ class DetectorBase:
                 persist=True,
                 conf=0.5,
                 iou=0.6,
-                imgsz=640,
+                # imgsz=640,
                 verbose=False,
                 device=self.device)
         else:
             return self.model(
-                frame, conf=0.3, iou=0.45,
-                imgsz=640, verbose=False, device=self.device)
+                frame, conf=0.15, iou=0.6,
+                # imgsz=640,
+                verbose=False, device=self.device)
 
     def extract_detections(
         self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
@@ -111,16 +112,13 @@ class DetectorBase:
 
             yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
 
-    def get_tracks(self, video_item: VideoItem, object_ids: List[int]):
-        with connection_manager.create_session() as session:
-            detections = self.detect(video_item.frame)
-            track_data = self.extract_detections(detections, object_ids, video_item)
+    def get_tracks(self, video_item: VideoItem, object_ids: List[int], session: Session):
+        detections = self.detect(video_item.frame)
+        track_data = self.extract_detections(detections, object_ids, video_item)
 
-            for object_id, data in track_data.items():
-                object = self.types_map[object_id]
-                self._save_tracks(data, video_item, object, session)
-
-            session.commit()
+        for object_id, data in track_data.items():
+            object = self.types_map[object_id]
+            self._save_tracks(data, video_item, object, session)
 
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: Type[SQLModel], session: Session):
         pass

@@ -4,7 +4,7 @@ import traceback
 import logfire
 import tqdm
 
-from core.services.player_validator import PlayerValidator
+from src.core.services.player_validator import PlayerValidator
 from src.core.database import connection_manager
 from src.core.reporter.time_reporter import ProcessTimeReporter
 from src.core.repository.task_repository import TaskRepository
@@ -53,6 +53,7 @@ class Orchestrator:
             time_reporter = ProcessTimeReporter(match_id=request.match_id)
             time_reporter.start("Video Analysis (General)")
             batches = video_manager.read_video(int(settings.BATCH_SIZE), request.match_id)
+            total_frames = video_manager.get_total_frames()
 
             video_batching_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(video_batching_step, session)
@@ -70,20 +71,20 @@ class Orchestrator:
                 message="Procesando batch, detectando objetos, reconociendo color, números y calculando distancias y velocidades",
                 step_number=2,
             )
+            batches_count = 1
 
             try:
-                for batch in tqdm.tqdm(batches, total=video_manager.get_total_frames() // int(settings.BATCH_SIZE)):
+                for batch in tqdm.tqdm(batches, total=total_frames // int(settings.BATCH_SIZE), postfix=f"Actual batch: {batches_count}"):
                     for video_item in batch:
-                        logfire.info("[Orchestator] Detecting items")
                         time_reporter.start("Object Detection")
                         object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
-                        session.commit()
                         time_reporter.stop("Object Detection")
-                        logfire.info("[Orchestator] Color and number recognition")
                         time_reporter.start("Color and Number Recognition")
                         color_number_recognizer.execute(session=session, video_item=video_item)
                         time_reporter.stop("Color and Number Recognition")
-                        session.commit()
+                        video_manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
+                    
+                    batches_count += 1
 
             except Exception as e:
                 processing_batch_step.state = StatesModel.FAILED
@@ -91,7 +92,8 @@ class Orchestrator:
                 TaskRepository.upsert_task_step(processing_batch_step, session)
                 logfire.error(f"Error processing batch: {traceback.format_exc()}")
                 raise e
-            
+
+            session.commit()
             time_reporter.start("Validando Jugadores")
             validate_step = TaskStep(
                 task_id=task.id,
@@ -103,7 +105,7 @@ class Orchestrator:
             
             try:
 
-                PlayerValidator().validate(request.match_id, video_manager.get_total_frames(), session)
+                PlayerValidator().validate(request.match_id, total_frames, session)
             except Exception as e:
                 validate_step.state = StatesModel.FAILED
                 validate_step.message = f"Error validando jugadores: {str(e)}"
@@ -112,24 +114,29 @@ class Orchestrator:
                 time_reporter.stop("Validando Jugadores")
                 raise e
             
-            validate_step.state = StatesModel.COMPLETED
-            TaskRepository.upsert_task_step(validate_step, session)
-            time_reporter.stop("Validando Jugadores")
+            try:
+                validate_step.state = StatesModel.COMPLETED
+                TaskRepository.upsert_task_step(validate_step, session)
+                time_reporter.stop("Validando Jugadores")
 
 
-            reporter_step = TaskStep(
-                task_id=task.id,
-                name="Generating Report",
-                message="Generando reporte",
-                step_number=4,
-            )
-            TaskRepository.upsert_task_step(reporter_step, session)
-            detection_reporter.generate_report(request.match_id, session)
-            reporter_step.state = StatesModel.COMPLETED
-            TaskRepository.upsert_task_step(reporter_step, session)
+                reporter_step = TaskStep(
+                    task_id=task.id,
+                    name="Generating Report",
+                    message="Generando reporte",
+                    step_number=4,
+                )
+                TaskRepository.upsert_task_step(reporter_step, session)
+                detection_reporter.generate_report(request.match_id, session)
+                reporter_step.state = StatesModel.COMPLETED
+                TaskRepository.upsert_task_step(reporter_step, session)
 
-            processing_batch_step.state = StatesModel.COMPLETED
-            TaskRepository.upsert_task_step(processing_batch_step, session)
+                processing_batch_step.state = StatesModel.COMPLETED
+                TaskRepository.upsert_task_step(processing_batch_step, session)
 
-            time_reporter.stop("Video Analysis (General)")
-            time_reporter.publish()
+                time_reporter.stop("Video Analysis (General)")
+                time_reporter.publish()
+            except Exception as e:
+                logfire.error(f"Error generating report: {traceback.format_exc()}")
+                detection_reporter.generate_report(request.match_id, session)
+                raise e

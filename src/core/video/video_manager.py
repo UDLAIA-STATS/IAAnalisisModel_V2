@@ -44,6 +44,8 @@ class VideoManager(VideoManagerBase):
                     self._save_frame_as_image(frame_num, frame)
             return
 
+        logfire.info(f"""shape={frames.shape} | expected={(self.writing_width, self.writing_height)} |received={(frames.shape[1], frames.shape[0])}""")
+
         self.writer.write(frames)
         self.preview_frame(frames)
 

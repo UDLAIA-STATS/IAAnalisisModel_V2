@@ -37,8 +37,8 @@ class ObjectDetection(AnalysisStepHandler):
         video_item: VideoItem = kwargs["video_item"]
 
         try:
-            track_manager.execute_trackers(video_item)
-
+            track_manager.execute_trackers(video_item, session)
+            session.commit()
             return True
         except Exception as e:
             session.rollback()
@@ -75,14 +75,15 @@ class NumberAndColorRecognition(AnalysisStepHandler):
                 rgb_str = f"{rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}"
 
                 state.player.team_color = rgb_str
-                label = f"ID: {state.player.track_id} | {hex} | Conf: {state.confidence}"
+                label = f"ID: {state.player.track_id} |{hex}| Conf: {state.confidence:.2f}"
                 labels.append(label)
 
                 session.add(state)
                 session.flush()
 
-            video_item.annotated_frame = player_annotator.annotate(annotated_frame=video_item.annotated_frame, detections=None, labels=labels)
-
+            video_item.annotated_frame = player_annotator.annotate(
+                annotated_frame=video_item.annotated_frame, detections=None, labels=labels)
+            session.commit()
             return True
         except Exception as e:
             session.rollback()

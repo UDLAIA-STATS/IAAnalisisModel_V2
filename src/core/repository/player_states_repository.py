@@ -11,19 +11,19 @@ class PlayerStatesRepository:
     def get_state_by_track_id(
         frame_number: int, match_id: int, track_id: int, session: Session
     ) -> Tuple[PlayerModel, PlayerState] | Tuple[None, None] | Tuple[PlayerModel, None]:
-        player_query = select(PlayerModel).where(PlayerModel.match_id == match_id).where(PlayerModel.track_id == track_id)
+        player_query = select(PlayerModel).where(PlayerModel.match_id == match_id, PlayerModel.track_id == track_id)
         player = session.exec(player_query).first()
 
         if player is None:
             return None, None
 
         state_query = select(PlayerState).where(PlayerState.player_id == player.id, PlayerState.frame_number == frame_number)
-        result = session.exec(state_query).first()
+        state = session.exec(state_query).first()
 
-        if result is None:
+        if state is None:
             return None, None
 
-        return player, result
+        return player, state
 
     @staticmethod
     def get_state_by_id(player_state_id: int, session: Session) -> PlayerState | None:
@@ -34,7 +34,7 @@ class PlayerStatesRepository:
     def get_states_by_frame(match_id: int, frame_number: int, session: Session) -> Sequence[PlayerState]:
         query = (
             select(PlayerState)
-            .join(PlayerModel, PlayerState.player_id == PlayerModel.id)
+            .join(target=PlayerModel, onclause=PlayerState.player_id == PlayerModel.id, full=True)
             .where(PlayerState.frame_number == frame_number, PlayerModel.match_id == match_id)
         )
         results = session.exec(query).all()
@@ -48,16 +48,13 @@ class PlayerStatesRepository:
 
     @staticmethod
     def get_states_by_frame_range(match_id: int, min_frame: int, max_frame: int, session: Session) -> Sequence[PlayerState]:
-        query = (
+        states = session.exec(
             select(PlayerState)
-            .join(PlayerModel, PlayerState.player_id == PlayerModel.id)
-            .where(
-                PlayerState.frame_number >= min_frame,
-                PlayerState.frame_number <= max_frame,
-                PlayerModel.match_id == match_id)
-            .order_by(PlayerState.frame_number)
-        )
-        return session.exec(query).all()
+            .join(target=PlayerModel, onclause=PlayerState.player_id == PlayerModel.id, full=True)
+            .where(PlayerState.frame_number >= min_frame, PlayerState.frame_number <= max_frame, PlayerModel.match_id == match_id)
+            .order_by(PlayerState.frame_number)).all()
+
+        return states
     
     @staticmethod
     def merge_states(keep_player_id: int, remove_player_id: int, session: Session):
@@ -66,15 +63,18 @@ class PlayerStatesRepository:
             .where(PlayerState.player_id == remove_player_id)
         ).all()
 
+        logfire.info(f"[PlayerStatesRepository] Merging {len(states)} states of player {remove_player_id} into player {keep_player_id}")
+
         for state in states:
             state.player_id = keep_player_id
             session.add(state)
-        
+            session.flush()
+
         duplicate_player = session.get(
             PlayerModel, remove_player_id
         )
 
         if duplicate_player:
             session.delete(duplicate_player)
-        
+
         session.flush()
