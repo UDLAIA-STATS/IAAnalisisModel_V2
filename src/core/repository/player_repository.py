@@ -18,10 +18,23 @@ class PlayerRepository:
 
     @staticmethod
     def get_player_by_id(player_id: int, session: Session) -> PlayerModel | None:
-        query = select(PlayerModel).where(PlayerModel.id == player_id)
-        return session.exec(query).first()
+        return session.get(PlayerModel, player_id)
 
     @staticmethod
-    def upsert_player(player: PlayerModel, session: Session) -> None:
+    def upsert_player(player: PlayerModel, session: Session) -> int:
+        existing = session.exec(
+            select(PlayerModel)
+            .where(PlayerModel.match_id == player.match_id, PlayerModel.track_id == player.track_id)
+        ).first()
+
+        if existing:
+            existing.sqlmodel_update(player.model_dump(exclude_unset=True))
+            session.add(existing)
+            return existing.id
+
         session.add(player)
         session.flush()
+        player_id = player.id
+        return player_id
+
+    

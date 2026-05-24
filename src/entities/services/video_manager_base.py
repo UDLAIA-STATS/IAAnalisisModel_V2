@@ -41,7 +41,7 @@ class VideoManagerBase(ABC):
         if show:
             self.named_window = f"Annotated {self.video_path.name} - Match {self.match_id}"
             cv2.namedWindow(self.named_window, cv2.WINDOW_NORMAL)
-            cv2.resizeWindow(self.named_window, int(w * 1.5), int(h * 1.5))
+            cv2.resizeWindow(self.named_window, int(w * 2), int(h * 1.8))
 
     def validate_video(self, video_path: Path):
         return video_path.exists() and video_path.is_file()

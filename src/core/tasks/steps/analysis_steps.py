@@ -1,6 +1,7 @@
 import logfire
 from sqlmodel import Session
 
+from src.core.repository.player_repository import PlayerRepository
 from src.core.trackers import TrackerManager
 from src.core.vision.color_recognizer import ColorRecognizer
 from src.entities.interfaces.app import AnalysisStepHandler
@@ -74,12 +75,18 @@ class NumberAndColorRecognition(AnalysisStepHandler):
                 rgb, hex = ColorRecognizer.extract_color(crop)
                 rgb_str = f"{rgb[0]:.0f},{rgb[1]:.0f},{rgb[2]:.0f}"
 
-                state.player.team_color = rgb_str
+                player = PlayerRepository.get_player_by_id(state.player_id, session)
+                
+                if player is None:
+                    logfire.error(f"[NumberAndColorRecognition] No player found for {state.player_id}")
+                    continue
+
+                player.team_color = rgb_str
+
                 label = f"ID: {state.player.track_id} |{hex}| Conf: {state.confidence:.2f}"
                 labels.append(label)
 
-                session.add(state)
-                session.flush()
+                PlayerRepository.upsert_player(player, session)
 
             video_item.annotated_frame = player_annotator.annotate(
                 annotated_frame=video_item.annotated_frame, detections=None, labels=labels)

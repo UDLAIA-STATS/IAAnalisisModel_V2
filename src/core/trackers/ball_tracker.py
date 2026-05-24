@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List, Sequence, Union, override
+from typing import Generator, List, Sequence, Union, override
 import logfire
 from ultralytics.engine.results import Results
 from supervision.detection.core import Detections
@@ -27,7 +27,7 @@ class BallTracker(DetectorBase):
         """Detect objects in a frame."""
         return self.model(
             frame,
-            conf=0.3,
+            conf=0.1,
             verbose=False,
             iou=0.45,
             device=self.device,
@@ -45,7 +45,7 @@ class BallTracker(DetectorBase):
 
         for object_id in objects_ids:
             filtered_detections = detections[detections.class_id == object_id]
-            logfire.info(f"[BallTracker] Number of detections: {len(filtered_detections)}")
+            logfire.notice(f"[BallTracker] Number of detections: {len(filtered_detections)}")
             annotator = self.classes[object_id]
             annotator.set_detections(filtered_detections)
 
@@ -57,6 +57,24 @@ class BallTracker(DetectorBase):
                 detections_map[object_id].extend(data)
 
         return detections_map
+
+    @override
+    def _extract_tracks_data(self, detections: Detections, video_item: VideoItem) -> Generator[TrackData, None, None]:
+        for i in range(len(detections)):
+            if detections is None:
+                continue
+
+            x1, y1, x2, y2 = map(int, detections.xyxy[i])
+
+            if detections.confidence is None:
+                logfire.warning(f"[BallTracker] No confidence for object in frame {video_item.frame_num} match id {video_item.match_id}")
+                conf = 0.3
+            else:
+                conf = detections.confidence[i]
+
+            track_id = 0
+
+            yield TrackData(xyxy=(x1, y1, x2, y2), track_id=track_id, confidence=conf)
 
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):

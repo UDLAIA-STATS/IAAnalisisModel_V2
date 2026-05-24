@@ -6,4 +6,4 @@ from src.entities.models.soccer.soccer_base_models import BBoxModel, DynamicMove
 
 class BallState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, DynamicMovementModel, table=True):
     __tablename__ = "ball_states"  # type: ignore
-    match_id: int = Field(index=True)
+    match_id: int = Field(index=True, unique=False)

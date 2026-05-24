@@ -74,9 +74,9 @@ class PlayerTracker(DetectorBase):
 
             if player is None:
                 new_player = PlayerModel(match_id=video_item.match_id, track_id=track_data.track_id)
-                PlayerRepository.upsert_player(new_player, session)
+                player_id  = PlayerRepository.upsert_player(new_player, session)
                 new_state = PlayerState(
-                    player_id=new_player.id,
+                    player_id=player_id,
                     frame_number=video_item.frame_num,
                     x1=x1,
                     y1=y1,
@@ -87,6 +87,7 @@ class PlayerTracker(DetectorBase):
                 )
                 states.append(new_state)
                 continue
+
 
             if player and state is None:
                 new_state = PlayerState(

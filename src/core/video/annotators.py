@@ -17,7 +17,7 @@ class PlayerAnnotator(AnnotatorServiceBase):
 
 
 class BallAnnotator(AnnotatorServiceBase):
-    def __init__(self, anotator_name: str = "Ball", hex_color: str = "#861818", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.5):
+    def __init__(self, anotator_name: str = "Ball", hex_color: str = "#861818", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.4):
         super().__init__(anotator_name, hex_color, thickness, text_thickness, text_scale)
 
     @override
@@ -26,7 +26,7 @@ class BallAnnotator(AnnotatorServiceBase):
 
 
 class GoalAnnotator(AnnotatorServiceBase):
-    def __init__(self, anotator_name: str = "Goal", hex_color: str = "#CF9260", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.5):
+    def __init__(self, anotator_name: str = "Goal", hex_color: str = "#CF9260", thickness: int = 2, text_thickness: int = 1, text_scale: float = 0.4):
         super().__init__(anotator_name, hex_color, thickness, text_thickness, text_scale)
 
     @override
