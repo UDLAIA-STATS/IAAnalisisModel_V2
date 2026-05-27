@@ -78,3 +78,28 @@ class PlayerStatesRepository:
             session.delete(duplicate_player)
 
         session.flush()
+    
+    @staticmethod
+    def update_state(state: PlayerState, session: Session):
+        original_state = session.get(PlayerState, state.id)
+
+        if not original_state:
+            logfire.error(f"PlayerStatesRepository.update_state: No state found for id {state.id} in database")
+            raise ValueError(f"PlayerStatesRepository.update_state: No state found for id {state.id} in database")
+
+        player_states = session.exec(
+            select(PlayerState)
+            .where(PlayerState.player_id == state.player_id)
+        ).all()
+
+        logfire.notice(f"[PlayerStatesRepository] Updating {len(player_states)} states of player {state.player_id}")
+
+        original_state.sqlmodel_update(state.model_dump(exclude_unset=True))
+        session.flush()
+
+        player_states = session.exec(
+            select(PlayerState)
+            .where(PlayerState.player_id == state.player_id)
+        ).all()
+
+        logfire.notice(f"[PlayerStatesRepository] Updated {len(player_states)} states of player {state.player_id}")

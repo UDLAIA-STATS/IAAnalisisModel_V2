@@ -19,6 +19,7 @@ from src.entities.models.app.detector_base import TrackManagerItem
 from src.entities.models.app.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
+from src.core.post_processing.physics_processing import physics_procesor
 
 # S3 Connection Manager
 
@@ -97,8 +98,8 @@ class Orchestrator:
             time_reporter.start("Validando Jugadores")
             validate_step = TaskStep(
                 task_id=task.id,
-                name="Validando Jugadores",
-                message="Validando Jugadores",
+                name="Validación y Calculo de Medidas Físicas",
+                message="Validando Jugadores y calculando medidas físicas",
                 step_number=3,
             )
             TaskRepository.upsert_task_step(validate_step, session)
@@ -106,6 +107,7 @@ class Orchestrator:
             try:
 
                 PlayerValidator().validate(request.match_id, total_frames, session)
+                physics_procesor.process(request.match_id, session)
             except Exception as e:
                 validate_step.state = StatesModel.FAILED
                 validate_step.message = f"Error validando jugadores: {str(e)}"
