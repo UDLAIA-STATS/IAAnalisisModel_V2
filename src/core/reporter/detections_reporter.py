@@ -4,6 +4,9 @@ from typing import List
 import uuid
 
 import logfire
+import pandas as pd
+import matplotlib.pyplot as plt
+
 from pydantic import BaseModel
 from sqlmodel import Session
 
@@ -34,13 +37,26 @@ class DetectionsReporter:
         report_rows.extend(self.get_balls(match_id, session))
         report_rows.extend(self.get_players(match_id, session))
 
-        report_name = DETECTED_OBJECTS_METRICS_DIR / f"report_{match_id}_{uuid.uuid4()}.csv"
+        report_name = (
+            DETECTED_OBJECTS_METRICS_DIR / f"report_{match_id}_{uuid.uuid4()}.csv"
+        )
 
         with open(report_name, mode="w", newline="", encoding="utf-8") as file:
             csv_writer = csv.writer(file)
 
             csv_writer.writerow(
-                ["frame_number", "object_type", "track_id", "bbox", "confidence", "shirt_color", "shirt_number", "speed", "distance", "timestamp"]
+                [
+                    "frame_number",
+                    "object_type",
+                    "track_id",
+                    "bbox",
+                    "confidence",
+                    "shirt_color",
+                    "shirt_number",
+                    "speed",
+                    "distance",
+                    "timestamp",
+                ]
             )
 
             for row in report_rows:
@@ -58,7 +74,7 @@ class DetectionsReporter:
                         row.timestamp,
                     ]
                 )
-        
+
         logfire.info(f"[DetectionsReporter] Report generated: {report_name.as_posix()}")
         self.generate_diagrams(report_name)
 
@@ -126,9 +142,100 @@ class DetectionsReporter:
             )
 
         return report_rows
-    
+
     def generate_diagrams(self, report_path: Path):
-        pass
+        """
+        Generates:
+        1. Recognition frequency per player
+        2. Average confidence per player
+        3. Tracking persistence
+        """
+
+        df = pd.read_csv(report_path)
+
+        # Keep only player detections
+        players_df = df[df["object_type"] == "player"]
+
+        if players_df.empty:
+            logfire.warning("[DetectionsReporter] No player data found")
+            return
+
+        diagrams_dir = report_path.parent / "diagrams"
+        diagrams_dir.mkdir(exist_ok=True)
+
+        # =========================================================
+        # 1. PLAYER RECOGNITION COUNT
+        # =========================================================
+
+        recognition_counts = (
+            players_df.groupby("shirt_number").size().sort_values(ascending=False)
+        )
+
+        plt.figure(figsize=(10, 6))
+
+        recognition_counts.plot(kind="bar")
+
+        plt.title("Player Recognition Frequency")
+        plt.xlabel("Shirt Number")
+        plt.ylabel("Recognition Count")
+
+        plt.tight_layout()
+
+        recognition_chart = (
+            diagrams_dir / f"recognition_frequency_{report_path.stem}.png"
+        )
+
+        plt.savefig(recognition_chart)
+        plt.close()
+
+        # =========================================================
+        # 2. AVERAGE CONFIDENCE
+        # =========================================================
+
+        avg_confidence = (
+            players_df.groupby("shirt_number")["confidence"]
+            .mean()
+            .sort_values(ascending=False)
+        )
+
+        plt.figure(figsize=(10, 6))
+
+        avg_confidence.plot(kind="bar")
+
+        plt.title("Average Recognition Confidence")
+        plt.xlabel("Shirt Number")
+        plt.ylabel("Average Confidence")
+
+        plt.tight_layout()
+
+        confidence_chart = diagrams_dir / f"average_confidence_{report_path.stem}.png"
+
+        plt.savefig(confidence_chart)
+        plt.close()
+
+        # =========================================================
+        # 3. TRACKING PERSISTENCE
+        # =========================================================
+
+        persistence = (
+            players_df.groupby("shirt_number")["frame_number"]
+            .agg(lambda x: x.max() - x.min())
+            .sort_values(ascending=False)
+        )
+
+        plt.figure(figsize=(10, 6))
+
+        persistence.plot(kind="bar")
+
+        plt.title("Tracking Persistence")
+        plt.xlabel("Shirt Number")
+        plt.ylabel("Frames Persisted")
+
+        plt.tight_layout()
+
+        persistence_chart = (
+            diagrams_dir / f"tracking_persistence_{report_path.stem}.png"
+        )
 
 
 reporter = DetectionsReporter()
