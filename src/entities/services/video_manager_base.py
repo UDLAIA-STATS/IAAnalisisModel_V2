@@ -95,7 +95,7 @@ class VideoManagerBase(ABC):
             if not frame_exists:
                 break
 
-            dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC))
+            dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC)) * 0.001
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
             batch.append(VideoItem(frame=frame, annotated_frame=frame, timestamp=dt, match_id=match_id, frame_num=frame_num))
 

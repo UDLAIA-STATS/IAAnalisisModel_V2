@@ -1,4 +1,5 @@
 import csv
+from pathlib import Path
 from typing import List
 import uuid
 
@@ -22,7 +23,7 @@ class ReportRow(BaseModel):
     shirt_number: str = ""
     speed: float = 0.0
     distance: float = 0.0
-    timestamp_ms: int
+    timestamp: int
 
 
 class DetectionsReporter:
@@ -39,7 +40,7 @@ class DetectionsReporter:
             csv_writer = csv.writer(file)
 
             csv_writer.writerow(
-                ["frame_number", "object_type", "track_id", "bbox", "confidence", "shirt_color", "shirt_number", "speed", "distance", "timestamp_ms"]
+                ["frame_number", "object_type", "track_id", "bbox", "confidence", "shirt_color", "shirt_number", "speed", "distance", "timestamp"]
             )
 
             for row in report_rows:
@@ -54,11 +55,12 @@ class DetectionsReporter:
                         row.shirt_number,
                         row.speed,
                         row.distance,
-                        row.timestamp_ms,
+                        row.timestamp,
                     ]
                 )
         
         logfire.info(f"[DetectionsReporter] Report generated: {report_name.as_posix()}")
+        self.generate_diagrams(report_name)
 
     def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:
         balls = BallRepository.get_balls_by_match_id(match_id, session)
@@ -73,7 +75,7 @@ class DetectionsReporter:
                     track_id=0,
                     bbox=bbox,
                     confidence=ball.confidence,
-                    timestamp_ms=ball.timestamp_ms,
+                    timestamp=ball.timestamp,
                 )
             )
 
@@ -99,7 +101,7 @@ class DetectionsReporter:
                         distance=state.distance_meters,
                         shirt_color=player.team_color,
                         shirt_number=str(player.shirt_number),
-                        timestamp_ms=state.timestamp_ms,
+                        timestamp=state.timestamp,
                     )
                 )
 
@@ -119,11 +121,14 @@ class DetectionsReporter:
                     track_id=0,
                     bbox=bbox,
                     confidence=goal.confidence,
-                    timestamp_ms=goal.timestamp_ms,
+                    timestamp=goal.timestamp,
                 )
             )
 
         return report_rows
+    
+    def generate_diagrams(self, report_path: Path):
+        pass
 
 
 reporter = DetectionsReporter()

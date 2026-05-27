@@ -53,6 +53,7 @@ class ProcessTimeReporter:
         stat["max"] = max(stat["max"], duration)
 
         logfire.info(f"[Time Reporter] Proceso '{process}' detenido. Duracion: {duration:.4f} segundos")
+        logfire.info(f"[Time Reporter] Proceso '{process}' detenido. Duracion: {duration/60:.4f} minutos")
 
     def publish(self):
         initial_data = self.report_file.read_text("utf-8")

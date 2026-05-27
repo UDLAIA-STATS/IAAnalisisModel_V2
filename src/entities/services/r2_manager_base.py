@@ -24,9 +24,9 @@ class R2ManagerBase(ABC):
             config=config,
         )
         self.video_bucket = settings.VIDEO_BUCKET
-        self.artefactos_bucket = settings.ARTEFACTOS_BUCKET
+        self.data_bucket = settings.PLAYER_DATA_BUCKET
 
-        self.artefactos_public_url = settings.ARTEFACTOS_PUBLIC_URL
+        self.data_public_url = settings.PLAYER_DATA_PUBLIC_URL
 
     def generate_key(
             self,
@@ -35,27 +35,24 @@ class R2ManagerBase(ABC):
             purpose_type: FilePurposeTypes,
             file_extension: str
     ) -> str:
-        bucket = self.artefactos_bucket
         if purpose_type == FilePurposeTypes.PLAYER_IMAGE:
-            return f"{bucket}/{match_id}/players/{filename}_{uuid.uuid4()}.{file_extension}"
+            return f"{match_id}/players/{filename}_{uuid.uuid4()}.{file_extension}"
         elif purpose_type == FilePurposeTypes.HEATMAP:
-            return f"{bucket}/{match_id}/heatmaps/{filename}_{uuid.uuid4()}.{file_extension}"
+            return f"{match_id}/heatmaps/{filename}_{uuid.uuid4()}.{file_extension}"
         elif purpose_type == FilePurposeTypes.REPORTS:
-            return f"{bucket}/{match_id}/reports/{filename}_{uuid.uuid4()}.{file_extension}"
+            return f"{match_id}/reports/{filename}_{uuid.uuid4()}.{file_extension}"
 
-        return f"{bucket}/{match_id}/{filename}_{uuid.uuid4()}.{file_extension}"
+        return f"{match_id}/{filename}_{uuid.uuid4()}.{file_extension}"
 
+    def get_public_url(self, key: str) -> str:
+        return f"{self.data_public_url}/{key}"
 
     @abstractmethod
     def upload(
-            self,
-            match_id: int,
-            file_bytes: bytes,
-            filename: str,
-            file_extension: str,
-            purpose_type: FilePurposeTypes,
-            file_type: str = "image/png",
-    ):
+        self,
+        key: str,
+        file_bytes: bytes,
+        file_type: str = "image/png") -> str:
         pass
 
     @abstractmethod

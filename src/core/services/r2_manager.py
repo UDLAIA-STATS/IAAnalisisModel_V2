@@ -1,3 +1,4 @@
+import asyncio
 from io import BytesIO
 from pathlib import Path
 import traceback
@@ -8,6 +9,7 @@ from botocore.exceptions import BotoCoreError, ClientError, ReadTimeoutError
 
 from src.entities.services.r2_manager_base import R2ManagerBase
 from src.entities.types.bucket_types import FilePurposeTypes
+from src.config.configuration import settings
 
 
 class R2Manager(R2ManagerBase):
@@ -17,29 +19,21 @@ class R2Manager(R2ManagerBase):
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1.2, min=4, max=8))
     def upload(
         self,
-        match_id: int,
+        key: str,
         file_bytes: bytes,
-        filename: str,
-        file_extension: str,
-        purpose_type: FilePurposeTypes,
         file_type: str = "image/png"):
         try:
-            bucket = self.artefactos_bucket
-            key = self.generate_key(
-                match_id=match_id,
-                filename=filename,
-                purpose_type=purpose_type,
-                file_extension=file_extension,
-            )
-
+            bucket = self.data_bucket
+            # asyncio.create_task(
             self.client.upload_fileobj(
                 Fileobj=BytesIO(file_bytes),
                 Bucket=bucket,
                 Key=key,
                 ExtraArgs={"ContentType": file_type},
             )
+            return f"{settings.PLAYER_DATA_PUBLIC_URL}/{key}"
+            # )
 
-            logfire.info(f"Archivo subido correctamente: {filename}")
 
         except Exception as e:
             logfire.error(f"Error subiendo archivo: {traceback.format_exc()}")

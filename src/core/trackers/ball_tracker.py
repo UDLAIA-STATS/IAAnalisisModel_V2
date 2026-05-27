@@ -33,37 +33,12 @@ class BallTracker(DetectorBase):
             device=self.device,
         )
     
-    @override
-    def extract_detections(
-        self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
-    ) -> dict[int, List[TrackData]]:
-        detections_map: dict[int, List[TrackData]] = {}
-        detections = Detections.from_ultralytics(results[0])
-
-        if len(detections) == 0:
-            return {}
-
-        for object_id in objects_ids:
-            filtered_detections = detections[detections.class_id == object_id]
-            logfire.notice(f"[BallTracker] Number of detections: {len(filtered_detections)}")
-            annotator = self.classes[object_id]
-            annotator.set_detections(filtered_detections)
-
-            data = list(self._extract_tracks_data(filtered_detections, video_item))  # type: ignore
-
-            if object_id not in detections_map:
-                detections_map[object_id] = data
-            else:
-                detections_map[object_id].extend(data)
-
-        return detections_map
 
     @override
     def _extract_tracks_data(self, detections: Detections, video_item: VideoItem) -> Generator[TrackData, None, None]:
         for i in range(len(detections)):
             if detections is None:
                 continue
-
             x1, y1, x2, y2 = map(int, detections.xyxy[i])
 
             if detections.confidence is None:
@@ -79,19 +54,15 @@ class BallTracker(DetectorBase):
     @override
     def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
         for track in detected_tracks:
-            ball = BallRepository.get_ball_by_frame_num(video_item.match_id, video_item.frame_num, session)
-
-            if ball is None:
-                new_ball = BallState(
-                    match_id=video_item.match_id,
-                    frame_number=video_item.frame_num,
-                    x1=track.xyxy[0],
-                    y1=track.xyxy[1],
-                    x2=track.xyxy[2],
-                    y2=track.xyxy[3],
-                    timestamp_ms=int(video_item.timestamp),
-                    confidence=track.confidence,
-                )
-                session.add(new_ball)
-                session.flush()
-                continue
+            new_ball = BallState(
+                match_id=video_item.match_id,
+                frame_number=video_item.frame_num,
+                x1=track.xyxy[0],
+                y1=track.xyxy[1],
+                x2=track.xyxy[2],
+                y2=track.xyxy[3],
+                timestamp=int(video_item.timestamp),
+                confidence=track.confidence,
+            )
+            session.add(new_ball)
+            session.flush()
