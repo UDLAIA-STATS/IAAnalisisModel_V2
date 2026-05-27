@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "match_id": 24,
+    "date_time": "2026-05-21 10:39:11"
+  },
+  "stats": {
+    "Object Detection": {
+      "count": 676,
+      "total": 3687.9209942000034,
+      "min": 3.903380699999616,
+      "max": 11.405372100000022
+    },
+    "Color and Number Recognition": {
+      "count": 676,
+      "total": 70.7887564000066,
+      "min": 0.004325100000642124,
+      "max": 0.31471659999988333
+    },
+    "Video Analysis (General)": {
+      "count": 1,
+      "total": 3778.7426037999994,
+      "min": 3778.7426037999994,
+      "max": 3778.7426037999994
+    }
+  }
+}

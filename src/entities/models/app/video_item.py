@@ -7,6 +7,7 @@ from cv2.typing import MatLike
 
 
 class VideoItem(BaseModel):
+    match_id: int
     frame: Union[MatLike, np.ndarray]
     annotated_frame: Union[MatLike, np.ndarray]
     frame_num: int

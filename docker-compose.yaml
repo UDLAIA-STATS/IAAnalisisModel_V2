@@ -1,0 +1,13 @@
+services:
+  ia-model-v2:
+    build: .
+    container_name: ia-model-v2
+    ports:
+      - "8000:8000"
+    networks:
+      - shared-net
+
+networks:
+  shared-net:
+    external: true
+    name: shared-net

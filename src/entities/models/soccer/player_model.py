@@ -1,7 +1,7 @@
 from sqlmodel import Field, Relationship
 
-from entities.models.base_models import AuditTable, NumericIdModel
-from entities.models.soccer.soccer_base_models import BBoxModel, DynamicMovementModel, SoccerFrameData
+from src.entities.models.base_models import AuditTable, NumericIdModel
+from src.entities.models.soccer.soccer_base_models import BBoxModel, DynamicMovementModel, SoccerFrameData
 
 
 class PlayerModel(NumericIdModel, AuditTable, table=True):
@@ -9,10 +9,11 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
 
     match_id: int = Field(index=True)
     track_id: int = Field(index=True)
-    team_id: int = Field(index=True)
-    team_color: str
+    team_id: int = Field(index=True, default=None, nullable=True)
+    team_color: str = Field(index=True, default=None, nullable=True)
     goals: int = Field(default=0)  # Goles del jugador
-    shirt_number: int | None = Field(nullable=True, default=None)
+    shirt_number: int = Field(nullable=True, default=None)
+    crop_path: str = Field(nullable=True, default=None)
 
     states: list["PlayerState"] = Relationship(back_populates="player")
     numbers: list["PlayerNumbers"] = Relationship(back_populates="player")
@@ -26,14 +27,6 @@ class PlayerNumbers(NumericIdModel, AuditTable, table=True):
     frame_number: int
 
     player: PlayerModel = Relationship(back_populates="numbers")
-
-    __table_args__ = (
-        {
-            "indexes": [
-                {"columns": ["player_id", "frame_number"], "unique": True},
-            ]
-        },
-    )
 
 
 class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, DynamicMovementModel, table=True):
@@ -49,12 +42,3 @@ class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, Dynami
     ball_id: int | None = Field(foreign_key="ball_states.id", default=None, description="Id de la pelota si el jugador posee el balon", nullable=True)
 
     player: PlayerModel = Relationship(back_populates="states")
-
-    __table_args__ = (
-        {
-            "indexes": [
-                {"columns": ["player_id", "frame_number"], "unique": True},
-                {"columns": ["player_id", "timestamp_ms"]},
-            ]
-        },
-    )
