@@ -1,7 +1,6 @@
-import numpy as np
 from sqlmodel import Session
 
-from src.entities.services.physics_processing_model import PhysicsCalculatorBase
+from entities.services.physics_processing_base import PhysicsCalculatorBase
 from src.core.repository.player_states_repository import PlayerStatesRepository
 
 class PhysicsProcessing(PhysicsCalculatorBase):
