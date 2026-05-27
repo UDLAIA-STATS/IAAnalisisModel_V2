@@ -5,8 +5,8 @@ from sqlmodel import Session
 from src.core.repository.task_repository import TaskRepository
 from src.core.tasks.orchestrator import Orchestrator
 from src.core.database import connection_manager
-from src.entities.models.app.analyze_request import AnalyzeRequest
-from src.entities.models.app.queue_model import Task
+from entities.models.requests.analyze_request import AnalyzeRequest
+from entities.models.requests.queue_model import Task
 from src.entities.types.states import StatesModel
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])

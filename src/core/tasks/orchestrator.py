@@ -14,9 +14,9 @@ from src.core.video.video_manager import VideoManager
 
 from src.config.configuration import settings
 
-from src.entities.models.app.analyze_request import AnalyzeRequest
+from entities.models.requests.analyze_request import AnalyzeRequest
 from src.entities.models.app.detector_base import TrackManagerItem
-from src.entities.models.app.queue_model import Task, TaskStep
+from entities.models.requests.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 from src.core.post_processing.physics_processing import physics_procesor

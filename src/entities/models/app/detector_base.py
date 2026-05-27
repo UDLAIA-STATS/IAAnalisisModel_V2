@@ -9,7 +9,6 @@ from ultralytics.models import YOLO
 from ultralytics.engine.results import Results
 from supervision.detection.core import Detections
 
-from src.core.database import connection_manager
 from src.entities.models.app.track_data import TrackData
 from src.entities.models.app.video_item import VideoItem
 from src.entities.types.detector_types import DetectorTypes

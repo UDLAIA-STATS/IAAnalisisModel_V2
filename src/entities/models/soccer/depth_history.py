@@ -13,18 +13,7 @@ class DepthHistory(NumericIdModel, AuditTable, table=True):
     depth: float = Field(default=1.0, description="Profundidad del campo en relacion con la camara")
     pixels_to_meters: float = Field(default=1.0, description="Conversion de pixeles a metros")
     camera_scale: float = Field(default=1.0, description="Escala de la camara (nivel de zoom o aumento focal)")
+    player_id: int = Field(foreign_key="players.id", index=True, description="Id del jugador al que pertenece la constante")
 
     constant: float = Field(default=1.0, description="Constante de conversion, resultado de depth * pixels_to_meters * camera_scale")
 
-    @staticmethod
-    def create_depth_history(depth: float, pixels_to_meters: float, camera_scale: float, frame_num: int, timestamp: int, match_id: int):
-        constant = depth * pixels_to_meters * camera_scale
-        return DepthHistory(
-            depth=depth,
-            pixels_to_meters=pixels_to_meters,
-            camera_scale=camera_scale,
-            constant=constant,
-            frame_num=frame_num,
-            timestamp=timestamp,
-            match_id=match_id,
-        )

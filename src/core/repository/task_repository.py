@@ -1,6 +1,5 @@
 from sqlmodel import Session, select
-
-from src.entities.models.app.queue_model import TaskStep, Task
+from entities.models.requests.queue_model import TaskStep, Task
 
 
 class TaskRepository:
