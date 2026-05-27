@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 import uuid
 
 import logfire
@@ -10,11 +10,12 @@ import matplotlib.pyplot as plt
 from pydantic import BaseModel
 from sqlmodel import Session
 
-from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
+from entities.types.bucket_types import FilePurposeTypes
+from src.config.routes import DETECTED_OBJECTS_METRICS_DIR, DIAGRAMS_DIR
 from src.core.repository.ball_repository import BallRepository
 from src.core.repository.goal_repository import GoalRepository
 from src.core.repository.player_repository import PlayerRepository
-
+from src.core.repository.r2_repository import files_repository
 
 class ReportRow(BaseModel):
     frame_number: int
@@ -37,11 +38,11 @@ class DetectionsReporter:
         report_rows.extend(self.get_balls(match_id, session))
         report_rows.extend(self.get_players(match_id, session))
 
-        report_name = (
+        report_path = (
             DETECTED_OBJECTS_METRICS_DIR / f"report_{match_id}_{uuid.uuid4()}.csv"
         )
 
-        with open(report_name, mode="w", newline="", encoding="utf-8") as file:
+        with open(report_path, mode="w", newline="", encoding="utf-8") as file:
             csv_writer = csv.writer(file)
 
             csv_writer.writerow(
@@ -75,10 +76,23 @@ class DetectionsReporter:
                     ]
                 )
 
-        logfire.info(f"[DetectionsReporter] Report generated: {report_name.as_posix()}")
-        self.generate_diagrams(report_name)
+        logfire.info(f"[DetectionsReporter] Report generated: {report_path.as_posix()}")
+        recognition_chart, confidence_chart, persistence_chart = self.generate_diagrams(report_path)
+        recognition_chart, confidence_chart, persistence_chart = Path(recognition_chart), Path(confidence_chart), Path(persistence_chart)
 
-    def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:
+        report_key = files_repository.generate_key(match_id, report_path.stem, FilePurposeTypes.REPORTS, report_path.suffix[1:])
+        recognition_chart_key = files_repository.generate_key(match_id, recognition_chart.stem, FilePurposeTypes.REPORTS, recognition_chart.suffix[1:])
+        confidence_chart_key = files_repository.generate_key(match_id, confidence_chart.stem, FilePurposeTypes.REPORTS, confidence_chart.suffix[1:])
+        persistence_chart_key = files_repository.generate_key(match_id, recognition_chart.stem, FilePurposeTypes.REPORTS, persistence_chart.suffix[1:])
+
+        files_repository.upload_report(report_key, report_path)
+        files_repository.upload_report(recognition_chart_key, recognition_chart)
+        files_repository.upload_report(confidence_chart_key, confidence_chart)
+        files_repository.upload_report(persistence_chart_key, persistence_chart)
+
+        return report_key, recognition_chart_key, confidence_chart_key, persistence_chart_key
+
+    def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:        
         balls = BallRepository.get_balls_by_match_id(match_id, session)
         report_rows: List[ReportRow] = []
 
@@ -143,7 +157,7 @@ class DetectionsReporter:
 
         return report_rows
 
-    def generate_diagrams(self, report_path: Path):
+    def generate_diagrams(self, report_path: Path) -> Tuple[str, str, str]:
         """
         Generates:
         1. Recognition frequency per player
@@ -153,19 +167,12 @@ class DetectionsReporter:
 
         df = pd.read_csv(report_path)
 
-        # Keep only player detections
         players_df = df[df["object_type"] == "player"]
 
         if players_df.empty:
             logfire.warning("[DetectionsReporter] No player data found")
-            return
+            return "", "", ""
 
-        diagrams_dir = report_path.parent / "diagrams"
-        diagrams_dir.mkdir(exist_ok=True)
-
-        # =========================================================
-        # 1. PLAYER RECOGNITION COUNT
-        # =========================================================
 
         recognition_counts = (
             players_df.groupby("shirt_number").size().sort_values(ascending=False)
@@ -182,15 +189,11 @@ class DetectionsReporter:
         plt.tight_layout()
 
         recognition_chart = (
-            diagrams_dir / f"recognition_frequency_{report_path.stem}.png"
+            DIAGRAMS_DIR / f"recognition_frequency_{report_path.stem}.png"
         )
 
         plt.savefig(recognition_chart)
         plt.close()
-
-        # =========================================================
-        # 2. AVERAGE CONFIDENCE
-        # =========================================================
 
         avg_confidence = (
             players_df.groupby("shirt_number")["confidence"]
@@ -208,14 +211,10 @@ class DetectionsReporter:
 
         plt.tight_layout()
 
-        confidence_chart = diagrams_dir / f"average_confidence_{report_path.stem}.png"
+        confidence_chart = DIAGRAMS_DIR / f"average_confidence_{report_path.stem}.png"
 
         plt.savefig(confidence_chart)
         plt.close()
-
-        # =========================================================
-        # 3. TRACKING PERSISTENCE
-        # =========================================================
 
         persistence = (
             players_df.groupby("shirt_number")["frame_number"]
@@ -234,8 +233,11 @@ class DetectionsReporter:
         plt.tight_layout()
 
         persistence_chart = (
-            diagrams_dir / f"tracking_persistence_{report_path.stem}.png"
+            DIAGRAMS_DIR / f"tracking_persistence_{report_path.stem}.png"
         )
+
+
+        return recognition_chart.as_posix(), confidence_chart.as_posix(), persistence_chart.as_posix()
 
 
 reporter = DetectionsReporter()

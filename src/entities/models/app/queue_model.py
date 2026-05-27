@@ -21,6 +21,10 @@ class Task(UUIDModel, AuditTableCompletedTable, table=True):
     match_id: int = Field(index=True)
     video_name: str = Field(index=True)
     general_state: StatesModel = Field(index=True, default=StatesModel.PENDING)
+    report_url: str
+    recognition_chart_key: str
+    confidence_chart_key: str
+    persistence_chart_key: str
     user_id: int
 
     steps: List[TaskStep] = Relationship(back_populates="task", sa_relationship_kwargs={"cascade": "all, delete-orphan"})

@@ -13,6 +13,7 @@ dependencies = [
     "logfire[fastapi]>=4.32.1",
     "matplotlib>=3.10.9",
     "mediapipe>=0.10.35",
+    "pandas>=3.0.3",
     "psycopg2>=2.9.12",
     "psycopg[binary]>=3.3.4",
     "scikit-image>=0.26.0",

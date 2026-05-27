@@ -23,6 +23,7 @@ METRICS_DIR = OUTPUT_REPORTS_DIR / "metrics"
 DETECTED_OBJECTS_METRICS_DIR = OUTPUT_REPORTS_DIR / "detected_objects_metrics"
 MEMORY_TRACKER_DIR = OUTPUT_REPORTS_DIR / "memory_tracker"
 TIME_REPORTS_DIR = OUTPUT_REPORTS_DIR / "time_reports"
+DIAGRAMS_DIR = OUTPUT_REPORTS_DIR / "diagrams"
 
 # MODELS
 MODELS_DIR = BASE_RES_DIR / "models"
@@ -70,6 +71,7 @@ def ensure_directories():
         MODELS_BACKUP_DIR,
         CUSTOM_MODELS,
         TIME_REPORTS_DIR,
+        DIAGRAMS_DIR
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
