@@ -1,4 +1,5 @@
 from pathlib import Path
+from src.config.configuration import settings
 
 # BASE
 BASE_RES_DIR = Path("./res")
@@ -18,10 +19,10 @@ ANOTATED_VIDEOS_DIR = ANNOTATED_FILES_DIR / "videos"
 ANOTATED_OUTPUT_IMAGES = ANNOTATED_FILES_DIR / "images"
 
 # METRICS
-REPORTS_DIR = OUTPUT_REPORTS_DIR / "reports"
-METRICS_DIR = REPORTS_DIR / "metrics"
-DETECTED_OBJECTS_METRICS_DIR = REPORTS_DIR / "detected_objects_metrics"
-MEMORY_TRACKER_DIR = REPORTS_DIR / "memory_tracker"
+METRICS_DIR = OUTPUT_REPORTS_DIR / "metrics"
+DETECTED_OBJECTS_METRICS_DIR = OUTPUT_REPORTS_DIR / "detected_objects_metrics"
+MEMORY_TRACKER_DIR = OUTPUT_REPORTS_DIR / "memory_tracker"
+TIME_REPORTS_DIR = OUTPUT_REPORTS_DIR / "time_reports"
 
 # MODELS
 MODELS_DIR = BASE_RES_DIR / "models"
@@ -29,10 +30,10 @@ MODELS_BACKUP_DIR = MODELS_DIR / "backup"
 YOLO_MODELS_DIR = MODELS_DIR / "yolo"
 TROCR_PATH = MODELS_DIR / "trocr"
 CONFIG_MODELS_DIR = MODELS_DIR / "config"
-# BALL_MODEL_PATH = MODELS_DIR / BALL_MODEL_NAME
-# PLAYER_MODEL_PATH = MODELS_DIR / PLAYER_MODEL_NAME
-# MODEL_GOALS_PATH = MODELS_DIR / GOAL_MODEL_NAME
-# DEPTH_MODEL_PATH = MODELS_DIR / DEPTH_MODEL_NAME
+BALL_MODEL_PATH = YOLO_MODELS_DIR / str(settings.BALL_MODEL_NAME)
+PLAYER_MODEL_PATH = YOLO_MODELS_DIR / str(settings.PLAYER_MODEL_NAME)
+MODEL_GOALS_PATH = YOLO_MODELS_DIR / str(settings.GOAL_MODEL_NAME)
+DEPTH_MODEL_PATH = MODELS_DIR / str(settings.DEPTH_MODEL_NAME)
 BYTETRACK_CONFIG_PATH = CONFIG_MODELS_DIR / "bytetrack.yaml"
 
 # RETRAINING
@@ -68,6 +69,19 @@ def ensure_directories():
         BALL_CUSTOM_DATASET,
         MODELS_BACKUP_DIR,
         CUSTOM_MODELS,
+        TIME_REPORTS_DIR,
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
+
+
+def validate_model():
+    for file in [
+        BALL_MODEL_PATH,
+        PLAYER_MODEL_PATH,
+        MODEL_GOALS_PATH,
+        DEPTH_MODEL_PATH,
+        BYTETRACK_CONFIG_PATH,
+    ]:
+        if not file.exists() or not file.is_file():
+            raise FileNotFoundError(f"Modelo no encontrado: {file.name}")
