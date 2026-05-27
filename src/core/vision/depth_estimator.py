@@ -28,8 +28,7 @@ class DepthEstimator:
             alpha: float = 0.2,
             depth_scale: float = 1.0,
             camera_scale: float = 1.0,
-            depth_calculation_interval_seconds: float = 10.0,
-            logger: Optional[logging.Logger] = None,
+            depth_calculation_interval_seconds: float = 10.0
     ):
         
         if depth_model_type not in DepthModelsTypes.to_dict().values():
