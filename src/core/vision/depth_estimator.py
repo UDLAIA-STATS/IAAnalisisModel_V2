@@ -3,6 +3,8 @@ import numpy as np
 
 from typing import List, Optional
 
+import torch
+
 from src.entities.models.app.depth_estimator_base import DepthEstimatorBase
 
 
@@ -13,7 +15,7 @@ class DepthEstimator(DepthEstimatorBase):
         bbox: List[int],
         frame_num: int,
         current_camera_scale: float,
-    ) -> Optional[float]:
+    ) -> float:
         """
         Calcula profundidad para un jugador especifico usando el centro de su cintura.
 
@@ -28,7 +30,7 @@ class DepthEstimator(DepthEstimatorBase):
         """
         logfire.info("[DepthCalculator] Calculando profundidad para jugador...")
         if not self.should_calculate_depth(frame_num, current_camera_scale):
-            return None
+            return self.previous_depth
 
         self.last_calculation_frame = frame_num
         self.last_camera_scale = current_camera_scale
@@ -45,11 +47,11 @@ class DepthEstimator(DepthEstimatorBase):
 
         if x2 <= x1 or y2 <= y1:
             logfire.warning(f"[DepthCalculator] BBox invalido: {bbox}")
-            return None
+            return self.previous_depth
 
         roi = frame[y1:y2, x1:x2]
         if roi.size == 0:
-            return None
+            return self.previous_depth
 
         waist_center_norm = self._get_waist_center(roi)
 
@@ -72,3 +74,5 @@ class DepthEstimator(DepthEstimatorBase):
         )
 
         return depth
+
+player_depth_calculator = DepthEstimator(device="cpu" if not torch.cuda.is_available() else "cuda", alpha=0.3)

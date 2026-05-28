@@ -1,10 +1,11 @@
 from sqlmodel import Session
 
-from entities.services.physics_processing_base import PhysicsCalculatorBase
+from src.core.repository.depth_history_repository import DepthRepository
+from src.entities.services.physics_processing_base import PhysicsCalculatorBase
 from src.core.repository.player_states_repository import PlayerStatesRepository
 
 class PhysicsProcessing(PhysicsCalculatorBase):
-    def process(self, match_id: int, session: Session, constant: float = 1):
+    def process(self, match_id: int, session: Session):
         states = self.get_players(match_id, session)
 
         if not states:
@@ -17,6 +18,9 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                     prev_state = state
                     continue
 
+                prev_constant = DepthRepository.get_depth_by_player(match_id, prev_state.player_id, prev_state.frame_number, session)
+                actual_constant = DepthRepository.get_depth_by_player(match_id, state.player_id, state.frame_number, session)
+
                 xo = self._bbox_to_center([prev_state.x1, prev_state.y1, prev_state.x2, prev_state.y2])
                 xf = self._bbox_to_center([state.x1, state.y1, state.x2, state.y2])
 
@@ -26,8 +30,8 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                 state.dx = xf[0]
                 state.dy = xf[1]
 
-                xo = xo * constant
-                xf = xf * constant
+                xo = xo * prev_constant
+                xf = xf * actual_constant
                 delta_t = state.timestamp - prev_state.timestamp
                 distance, delta_x = self.calculate_distance(xo, xf)
                 vo, vf, acceleration_ms, speed_kmh = self.calculate_speed(delta_x, delta_t)

@@ -61,3 +61,5 @@ class ColorRecognizer:
         hex_color = "#{:02x}{:02x}{:02x}".format(*rgb_tuple)
 
         return rgb_tuple, hex_color
+
+jersey_color_extractor = ColorRecognizer()

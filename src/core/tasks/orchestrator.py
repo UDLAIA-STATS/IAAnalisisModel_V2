@@ -14,15 +14,14 @@ from src.core.video.video_manager import VideoManager
 
 from src.config.configuration import settings
 
-from entities.models.requests.analyze_request import AnalyzeRequest
+from src.entities.models.requests.analyze_request import AnalyzeRequest
 from src.entities.models.app.detector_base import TrackManagerItem
-from entities.models.requests.queue_model import Task, TaskStep
+from src.entities.models.requests.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 from src.core.post_processing.physics_processing import physics_procesor
-
-# S3 Connection Manager
-
+from src.core.tasks.steps.conversion_steps import ConversionCalculatorSteps
+from src.core.vision.camera_scale import scale_motion_detector
 
 class Orchestrator:
     def __init__(self):
@@ -55,6 +54,7 @@ class Orchestrator:
             time_reporter.start("Video Analysis (General)")
             batches = video_manager.read_video(int(settings.BATCH_SIZE), request.match_id)
             total_frames = video_manager.get_total_frames()
+            scale_motion_detector.start(video_manager.get_first_frame())
 
             video_batching_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(video_batching_step, session)
@@ -65,6 +65,7 @@ class Orchestrator:
             tracker_manager = self._init_trackers()
             object_detection = ObjectDetection()
             color_number_recognizer = NumberAndColorRecognition()
+            constant_calculator_steps = ConversionCalculatorSteps()
 
             processing_batch_step = TaskStep(
                 task_id=task.id,
@@ -84,7 +85,11 @@ class Orchestrator:
                         color_number_recognizer.execute(session=session, video_item=video_item)
                         time_reporter.stop("Color and Number Recognition")
                         video_manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
-                    
+
+                        time_reporter.start("Calculating Constants")
+                        constant_calculator_steps.execute(session=session, video_item=video_item)
+                        time_reporter.stop("Calculating Constants")
+
                     batches_count += 1
 
             except Exception as e:

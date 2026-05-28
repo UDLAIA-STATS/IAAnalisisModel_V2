@@ -54,8 +54,8 @@ class DepthEstimatorBase:
             f"({depth_calculation_interval_seconds}s), escala inicial={camera_scale}"
         )
 
-        self.previous_depth = 0
-        self.current_depth = 0
+        self.previous_depth = 1.00
+        self.current_depth = 1.00
 
         logfire.info(f"[DepthCalculator] Cargando modelo MiDaS: {depth_model_type}")
         self.midas = torch.hub.load("intel-isl/MiDaS", depth_model_type.value)
@@ -234,3 +234,6 @@ class DepthEstimatorBase:
         current_camera_scale: float,
     ) -> Optional[float]:
         pass
+
+    def get_last_depth(self) -> float:
+        return float(self.current_depth)

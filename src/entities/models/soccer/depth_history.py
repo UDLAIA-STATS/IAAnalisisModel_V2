@@ -15,5 +15,5 @@ class DepthHistory(NumericIdModel, AuditTable, table=True):
     camera_scale: float = Field(default=1.0, description="Escala de la camara (nivel de zoom o aumento focal)")
     player_id: int = Field(foreign_key="players.id", index=True, description="Id del jugador al que pertenece la constante")
 
-    constant: float = Field(default=1.0, description="Constante de conversion, resultado de depth * pixels_to_meters * camera_scale")
+    constant: float = Field(default=1.0, description="Constante de conversion, resultado de depth * pixels_to_meters, camera scale is already considered in depth")
 
