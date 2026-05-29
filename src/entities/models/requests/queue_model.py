@@ -25,6 +25,6 @@ class Task(UUIDModel, AuditTableCompletedTable, table=True):
     recognition_chart_key: str = Field(default="")
     confidence_chart_key: str = Field(default="")
     persistence_chart_key: str = Field(default="")
-    user_id: int
+    nickname: str
 
     steps: List[TaskStep] = Relationship(back_populates="task", sa_relationship_kwargs={"cascade": "all, delete-orphan"})

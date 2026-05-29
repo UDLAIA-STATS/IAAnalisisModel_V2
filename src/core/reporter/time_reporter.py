@@ -52,7 +52,7 @@ class ProcessTimeReporter:
         stat["min"] = min(stat["min"], duration)
         stat["max"] = max(stat["max"], duration)
 
-        logfire.info(f"[Time Reporter] Proceso '{process}' detenido. Duracion: {duration:.4f} segundos")
+        # logfire.info(f"[Time Reporter] Proceso '{process}' detenido. Duracion: {duration:.4f} segundos")
         logfire.info(f"[Time Reporter] Proceso '{process}' detenido. Duracion: {duration/60:.4f} minutos")
 
     def publish(self):

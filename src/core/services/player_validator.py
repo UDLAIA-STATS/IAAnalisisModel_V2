@@ -80,6 +80,10 @@ class PlayerValidator(PlayerValidatorBase):
                     early, late = inc, cor
 
                 gap = late.frame_start - early.frame_end
+
+                if gap > self.MAX_FRAME_GAP:
+                    continue
+
                 pos_dist = self.calculate_distance(
                     (early.last_cx, early.last_cy),
                     (late.first_cx, late.first_cy),
@@ -120,6 +124,7 @@ class PlayerValidator(PlayerValidatorBase):
                 continue
 
             uf.union(correct_id, incorrect_id)
+            
             merged_incorrect.add(incorrect_id)
             logfire.info(
                 f"[PlayerValidator] Scheduling merge {incorrect_id} → {correct_id} "
@@ -138,7 +143,6 @@ class PlayerValidator(PlayerValidatorBase):
             for member in members:
                 if member == root:
                     continue
-                logfire.info(f"[PlayerValidator] Merging player_id={member} → {root}")
                 PlayerStatesRepository.merge_states(root, member, session)
                 total_merged += 1
 

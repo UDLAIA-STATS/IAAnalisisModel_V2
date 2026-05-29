@@ -78,10 +78,6 @@ class PixelsConverter:
             _, best_line = max(candidates, key=lambda x: x[0])
             x1, y1, x2, y2 = best_line
 
-            logfire.debug(
-                "[CalculateAreaBoundaryEnds] Linea de area detectada en coordenadas: "
-                f"({x1}, {y1}), ({x2}, {y2})"
-            )
             if x1 <= x2:        
                 A = np.array([x1, float(y1)], dtype=float)
                 B = np.array([x2, float(y2)], dtype=float)
@@ -89,10 +85,6 @@ class PixelsConverter:
                 A = np.array([x2, float(y2)], dtype=float)
                 B = np.array([x1, float(y1)], dtype=float)
 
-            logfire.debug(
-                "[CalculateAreaBoundaryEnds] Extremos de la linea de area: "
-                f"A={A}, B={B}"
-            )
             return A, B
         except Exception as e:
             logfire.error(f"[CalculateAreaBoundaryEnds] Error: {traceback.format_exc()}")

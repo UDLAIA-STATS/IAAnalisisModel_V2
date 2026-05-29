@@ -1,5 +1,4 @@
-from typing import Dict, List, Tuple, Set
-import logfire
+from typing import Dict, List, Tuple
 import numpy as np
 from skimage import color
 from collections import defaultdict
@@ -51,13 +50,14 @@ class PlayerValidatorBase:
     MAX_DISTANCE = 130          # max px between re-entry positions
     MAX_COLOR_DISTANCE = 40     # max ΔE (Lab) for color gate
     FRAME_STEP = 20             # kept for backward-compat helper
+    MAX_FRAME_GAP = 80
 
     # ── composite score weights & threshold ──────────────────────────────────
     # score = W_COLOR·color_dist + W_POSITION·(pos_dist/10) + W_GAP·(gap/100)
     # lower score = better match; pairs above MERGE_SCORE_THRESHOLD are skipped
-    W_COLOR: float = 0.5
-    W_POSITION: float = 0.3
-    W_GAP: float = 0.2
+    W_COLOR: float = 0.35
+    W_POSITION: float = 0.55
+    W_GAP: float = 0.1
     MERGE_SCORE_THRESHOLD: float = 20.0
 
     # ── ghost track pruning ───────────────────────────────────────────────────
@@ -71,10 +71,14 @@ class PlayerValidatorBase:
 
     def _composite_score(self, color_dist: float, pos_dist: float, gap: int) -> float:
         """Lower score = better match."""
+        color_score = color_dist / self.MAX_COLOR_DISTANCE
+        position_score = pos_dist / self.MAX_DISTANCE
+        gap_score = gap / self.GHOST_TRACK_THRESHOLD
+
         return (
-            self.W_COLOR * color_dist
-            + self.W_POSITION * (pos_dist / 10)
-            + self.W_GAP * (gap / 100)
+            self.W_COLOR * color_score
+            + self.W_POSITION * position_score
+            + self.W_GAP * gap_score
         )
 
     def _build_track_summaries(

@@ -1,13 +1,17 @@
+import traceback
+
 import logfire
 from sqlmodel import Session
 
+from src.entities.models.requests.queue_model import TaskStep
+from src.entities.types.states import StatesModel
 from src.core.repository.player_repository import PlayerRepository
 from src.core.trackers import TrackerManager
 from src.core.vision.color_recognizer import ColorRecognizer
 from src.entities.interfaces.app import AnalysisStepHandler
 from src.entities.models.app.video_item import VideoItem
 from src.core.video.annotators import player_annotator
-from src.core.repository import PlayerStatesRepository
+from src.core.repository import PlayerStatesRepository, files_repository, TaskRepository
 
 # Object detection --> Video Frame
 # Number and color recognition --> Video Frame
@@ -21,10 +25,31 @@ from src.core.repository import PlayerStatesRepository
 # Data post processing
 # Document uplaod --> Post
 
+class VideoDownload(AnalysisStepHandler):
+    name = "Download Video"
+    number_step = 1
+
+    def execute(self, session: Session, **kwargs) -> bool:
+        video_name: str = kwargs["video_name"]
+        destination: str = kwargs["destination"]
+        task_id: str = kwargs["task_id"]
+
+        step = TaskStep(task_id=task_id, name="Video Download", message="Descargando el video", step_number=1)
+        TaskRepository.upsert_task_step(step, session)
+        try:
+            files_repository.steam_download(video_name, destination)
+            step.state = StatesModel.COMPLETED
+            TaskRepository.upsert_task_step(step, session)
+            return True
+        except Exception as e:
+            logfire.exception(traceback.format_exc())
+            step.state = StatesModel.FAILED
+            TaskRepository.upsert_task_step(step, session)
+            raise e
 
 class ObjectDetection(AnalysisStepHandler):
     name = "Object Detection"
-    number_step = 1
+    number_step = 2
 
     def execute(self, session: Session, **kwargs) -> bool:
         """
@@ -48,7 +73,7 @@ class ObjectDetection(AnalysisStepHandler):
 
 class NumberAndColorRecognition(AnalysisStepHandler):
     name = "Number and Color Recognition"
-    number_step = 2
+    number_step = 3
 
     def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]

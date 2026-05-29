@@ -1,5 +1,7 @@
+import logfire
 from sqlmodel import Session
 
+from src.core.repository.depth_history_repository import DepthRepository
 from src.core.repository.player_states_repository import PlayerStatesRepository
 from src.entities.models.app.video_item import VideoItem
 from src.entities.interfaces.app.analysis_step_handler import AnalysisStepHandler
@@ -9,27 +11,26 @@ from src.entities.models.soccer.depth_history import DepthHistory
 
 class ConversionCalculatorSteps(AnalysisStepHandler):
     name = "Constant Conversion Calculator"
-    number_step = 3
+    number_step = 4
 
     def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]
-        default_constant = (
-            scale_motion_detector.get_current_scale() * player_depth_calculator.get_last_depth() *
-            pixel_conversion_handler.get_current_conversion())
-        
+ 
         states = PlayerStatesRepository.get_states_by_frame(video_item.match_id, video_item.frame_num, session=session)
         actual_depth = player_depth_calculator.get_last_depth()
         actual_scale = scale_motion_detector.get_current_scale()
         actual_pixel_conversion = pixel_conversion_handler.get_current_conversion()
         constant = actual_depth * actual_scale * actual_pixel_conversion
+        max_depth, max_pixels_to_meters = DepthRepository.get_max_values(session)
 
         try:
             for state in states:
+                bbox_height = state.y2 - state.y1
                 depth_history = DepthHistory(
                     player_id=state.player_id,
                     match_id=video_item.match_id,
                     frame_num=video_item.frame_num,
-                    timestamp=int(video_item.timestamp),
+                    timestamp=video_item.timestamp,
                 )
 
                 if video_item.frame_num % 30 != 0:
@@ -41,13 +42,16 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
                         frame=video_item.frame,
                         frame_num=video_item.frame_num,
                     )
-                    actual_pixel_conversion = pixel_conversion_handler.calculate_value(video_item.frame)
-                    constant = actual_depth * actual_scale * actual_pixel_conversion
+
+                    constant = (actual_depth * bbox_height) / 1.75
+
+                    if constant > 1:
+                        logfire.error(f"Constant value is greater than 1: {constant}")
                 
-                depth_history.depth = actual_depth
-                depth_history.pixels_to_meters = actual_pixel_conversion
-                depth_history.camera_scale = actual_scale 
-                depth_history.constant = constant
+                depth_history.depth = float(actual_depth)
+                depth_history.pixels_to_meters = float(actual_pixel_conversion)
+                depth_history.camera_scale = float(actual_scale)
+                depth_history.constant = float(constant)
 
                 session.add(depth_history)
                 session.flush()

@@ -104,7 +104,7 @@ class DetectorBase:
             else:
                 conf = detections.confidence[i]
 
-            if self.type == DetectorTypes.TRACKING:
+            if self.type == DetectorTypes.TRACKING and detections.tracker_id is not None:
                 track_id = detections.tracker_id[i]  # type: ignore
             else:
                 track_id = 0

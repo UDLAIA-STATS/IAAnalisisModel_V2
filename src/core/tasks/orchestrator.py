@@ -4,11 +4,12 @@ import traceback
 import logfire
 import tqdm
 
-from src.core.services.player_validator import PlayerValidator
+from src.config.routes import INPUT_VIDEOS_DIR
+from src.core.tasks.steps.post_process_steps import ValidationProcess
 from src.core.database import connection_manager
 from src.core.reporter.time_reporter import ProcessTimeReporter
 from src.core.repository.task_repository import TaskRepository
-from src.core.tasks.steps.analysis_steps import NumberAndColorRecognition, ObjectDetection
+from src.core.tasks.steps.analysis_steps import NumberAndColorRecognition, ObjectDetection, VideoDownload
 from src.core.trackers import BallTracker, GoalTracker, PlayerTracker, TrackerManager
 from src.core.video.video_manager import VideoManager
 
@@ -19,7 +20,6 @@ from src.entities.models.app.detector_base import TrackManagerItem
 from src.entities.models.requests.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
-from src.core.post_processing.physics_processing import physics_procesor
 from src.core.tasks.steps.conversion_steps import ConversionCalculatorSteps
 from src.core.vision.camera_scale import scale_motion_detector
 
@@ -41,19 +41,27 @@ class Orchestrator:
     def run_tasks(self, request: AnalyzeRequest, task_id: str):
         with connection_manager.create_session() as session:
             task = TaskRepository.get_task(task_id, session)
+            time_reporter = ProcessTimeReporter(match_id=request.match_id)
 
             if task is None:
-                task = Task(match_id=request.match_id, video_name=request.video_name, user_id=request.user_id)
+                task = Task(match_id=request.match_id, video_name=request.video_name, nickname=request.nickname)
                 TaskRepository.upsert_task(task, session)
+
+            video_path = INPUT_VIDEOS_DIR / request.video_name
+            
+            if not request.video_name.startswith(r"C:\Users"):
+                time_reporter.start("Video Download")
+                VideoDownload().execute(session, video_name=request.video_name, destination=video_path.as_posix(), task_id=task.id)
+                time_reporter.stop("Video Download")
 
             video_batching_step = TaskStep(task_id=task.id, name="Video Batching", message="Dividiendo en batch el video", step_number=1)
             video_batching_step = TaskRepository.upsert_task_step(video_batching_step, session)
 
-            video_manager = VideoManager(match_id=request.match_id, video_path=Path(request.video_name), show=True)
-            time_reporter = ProcessTimeReporter(match_id=request.match_id)
+            video_manager = VideoManager(match_id=request.match_id, video_path=video_path, show=True)
             time_reporter.start("Video Analysis (General)")
             batches = video_manager.read_video(int(settings.BATCH_SIZE), request.match_id)
             total_frames = video_manager.get_total_frames()
+            fps = video_manager.get_fps()
             scale_motion_detector.start(video_manager.get_first_frame())
 
             video_batching_step.state = StatesModel.COMPLETED
@@ -94,56 +102,53 @@ class Orchestrator:
 
             except Exception as e:
                 processing_batch_step.state = StatesModel.FAILED
-                processing_batch_step.message = f"Error procesando batch: {str(e)}"
+                processing_batch_step.message = f"Error procesando batch: {traceback.format_exc(500)}"
                 TaskRepository.upsert_task_step(processing_batch_step, session)
-                logfire.error(f"Error processing batch: {traceback.format_exc()}")
+                task.general_state = StatesModel.FAILED
+                TaskRepository.upsert_task(task, session)
+                logfire.fatal(f"Error processing batch: {traceback.format_exc()}")
                 raise e
 
             session.commit()
+            processing_batch_step.state = StatesModel.COMPLETED
+            TaskRepository.upsert_task_step(processing_batch_step, session)
+
             time_reporter.start("Validando Jugadores")
-            validate_step = TaskStep(
-                task_id=task.id,
-                name="Validación y Calculo de Medidas Físicas",
-                message="Validando Jugadores y calculando medidas físicas",
-                step_number=3,
-            )
-            TaskRepository.upsert_task_step(validate_step, session)
-            
             try:
-
-                PlayerValidator().validate(request.match_id, total_frames, session)
-                physics_procesor.process(request.match_id, session)
+                ValidationProcess().execute(session=session, task=task, request=request, total_frames=total_frames, fps=fps)
             except Exception as e:
-                validate_step.state = StatesModel.FAILED
-                validate_step.message = f"Error validando jugadores: {str(e)}"
-                TaskRepository.upsert_task_step(validate_step, session)
-                logfire.error(f"Error validating players: {traceback.format_exc()}")
-                time_reporter.stop("Validando Jugadores")
+                logfire.fatal(f"Error validating players: {traceback.format_exc(500)}")
+                task.general_state = StatesModel.FAILED
+                TaskRepository.upsert_task(task, session)
                 raise e
-            
-            try:
-                validate_step.state = StatesModel.COMPLETED
-                TaskRepository.upsert_task_step(validate_step, session)
+            finally:
                 time_reporter.stop("Validando Jugadores")
+            
+            reporter_step = TaskStep(
+                task_id=task.id,
+                name="Generating Report",
+                message="Generando reporte",
+                step_number=4,
+            )
+            TaskRepository.upsert_task_step(reporter_step, session)
 
-
-                reporter_step = TaskStep(
-                    task_id=task.id,
-                    name="Generating Report",
-                    message="Generando reporte",
-                    step_number=4,
-                )
-                TaskRepository.upsert_task_step(reporter_step, session)
+            try:
                 detection_reporter.generate_report(request.match_id, session)
                 reporter_step.state = StatesModel.COMPLETED
                 TaskRepository.upsert_task_step(reporter_step, session)
 
-                processing_batch_step.state = StatesModel.COMPLETED
-                TaskRepository.upsert_task_step(processing_batch_step, session)
 
                 time_reporter.stop("Video Analysis (General)")
                 time_reporter.publish()
             except Exception as e:
-                logfire.error(f"Error generating report: {traceback.format_exc()}")
+                logfire.fatal(f"Error generating report: {traceback.format_exc(500)}")
                 detection_reporter.generate_report(request.match_id, session)
+                reporter_step.state = StatesModel.FAILED
+                TaskRepository.upsert_task_step(reporter_step, session)
+                task.general_state = StatesModel.FAILED
+                TaskRepository.upsert_task(task, session)
+
                 raise e
+
+            task.general_state = StatesModel.COMPLETED
+            TaskRepository.upsert_task(task, session)

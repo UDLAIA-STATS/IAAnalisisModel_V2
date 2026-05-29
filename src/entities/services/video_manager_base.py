@@ -37,9 +37,11 @@ class VideoManagerBase(ABC):
             self.get_fps(),
             (int(w), int(h)),
         )
- 
+
         if show:
-            self.named_window = f"Annotated {self.video_path.name} - Match {self.match_id}"
+            self.named_window = (
+                f"Annotated {self.video_path.name} - Match {self.match_id}"
+            )
             cv2.namedWindow(self.named_window, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(self.named_window, int(w * 2), int(h * 1.8))
 
@@ -47,7 +49,9 @@ class VideoManagerBase(ABC):
         return video_path.exists() and video_path.is_file()
 
     def get_frame_size(self):
-        return self.cap.get(cv2.CAP_PROP_FRAME_WIDTH), self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        return self.cap.get(cv2.CAP_PROP_FRAME_WIDTH), self.cap.get(
+            cv2.CAP_PROP_FRAME_HEIGHT
+        )
 
     def get_total_frames(self):
         return int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -97,7 +101,15 @@ class VideoManagerBase(ABC):
 
             dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC)) * 0.001
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-            batch.append(VideoItem(frame=frame, annotated_frame=frame, timestamp=dt, match_id=match_id, frame_num=frame_num))
+            batch.append(
+                VideoItem(
+                    frame=frame,
+                    annotated_frame=frame,
+                    timestamp=dt,
+                    match_id=match_id,
+                    frame_num=frame_num,
+                )
+            )
 
         return batch
 
@@ -106,7 +118,12 @@ class VideoManagerBase(ABC):
         pass
 
     @abstractmethod
-    def write(self, frames: Union[List[MatLike], MatLike], frame_num: int, save_frame: bool = False):
+    def write(
+        self,
+        frames: Union[List[MatLike], MatLike],
+        frame_num: int,
+        save_frame: bool = False,
+    ):
         """
         Write annotated frames in the video.
         params:

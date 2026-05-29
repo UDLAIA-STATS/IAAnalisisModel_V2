@@ -17,6 +17,9 @@ async def lifespan(app: FastAPI):
     connection_manager.create_database()
     ensure_directories()
     validate_model()
+    logfire.configure()
+    logfire.instrument_fastapi(app)
+    logfire.notice("Application started, ready to receive requests")
     yield
     connection_manager.dispose()
     print("Application is shutting down...")
@@ -31,9 +34,6 @@ def run_app() -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
-
-    logfire.configure()
-    logfire.instrument_fastapi(app)
 
     app.include_router(analyze_router)
     return app

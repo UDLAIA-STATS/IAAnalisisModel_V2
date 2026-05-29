@@ -32,7 +32,38 @@ class BallTracker(DetectorBase):
             iou=0.45,
             device=self.device,
         )
-    
+
+    @override
+    def extract_detections(
+        self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
+    ) -> dict[int, List[TrackData]]:
+        detections_map: dict[int, List[TrackData]] = {}
+        detections = Detections.from_ultralytics(results[0])
+
+        if len(detections) == 0:
+            return {}
+
+        for object_id in objects_ids:
+            filtered_detections = detections[detections.class_id == object_id]
+            annotator = self.classes[object_id]
+            # annotator.set_detections(filtered_detections)
+
+            data = list(self._extract_tracks_data(filtered_detections, video_item))  # type: ignore
+
+            if object_id not in detections_map:
+                detections_map[object_id] = data
+            else:
+                detections_map[object_id].extend(data)
+
+            labels = []
+
+            for dt in data:
+                labels.append(f"Ball | {dt.confidence:.2f}")
+
+            video_item.annotated_frame = annotator.annotate(video_item.frame, filtered_detections, labels)
+
+        return detections_map
+
 
     @override
     def _extract_tracks_data(self, detections: Detections, video_item: VideoItem) -> Generator[TrackData, None, None]:
@@ -61,7 +92,7 @@ class BallTracker(DetectorBase):
                 y1=track.xyxy[1],
                 x2=track.xyxy[2],
                 y2=track.xyxy[3],
-                timestamp=int(video_item.timestamp),
+                timestamp=video_item.timestamp,
                 confidence=track.confidence,
             )
             session.add(new_ball)

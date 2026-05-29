@@ -28,7 +28,6 @@ class DepthEstimator(DepthEstimatorBase):
         Returns:
             Profundidad en metros o None si no se calculo/no se detecto pose
         """
-        logfire.info("[DepthCalculator] Calculando profundidad para jugador...")
         if not self.should_calculate_depth(frame_num, current_camera_scale):
             return self.previous_depth
 
@@ -37,16 +36,12 @@ class DepthEstimator(DepthEstimatorBase):
 
         x1, y1, x2, y2 = bbox
         h_frame, w_frame = frame.shape[:2]
-        logfire.info(f"[DepthCalculator] Dimensiones del frame: {w_frame}x{h_frame}")
 
         x1, y1 = max(0, int(x1)), max(0, int(y1))
         x2, y2 = min(int(w_frame), int(x2)), min(int(h_frame), int(y2))
-        logfire.info(
-            f"[DepthCalculator] Coordenadas extraidas del bbox: x1={x1}, y1={y1}, x2={x2}, y2={y2}"
-        )
 
         if x2 <= x1 or y2 <= y1:
-            logfire.warning(f"[DepthCalculator] BBox invalido: {bbox}")
+            logfire.error(f"[DepthCalculator] BBox invalido: {bbox}")
             return self.previous_depth
 
         roi = frame[y1:y2, x1:x2]
@@ -56,7 +51,7 @@ class DepthEstimator(DepthEstimatorBase):
         waist_center_norm = self._get_waist_center(roi)
 
         if waist_center_norm is None:
-            logfire.debug(
+            logfire.warning(
                 f"[DepthCalculator] Frame {frame_num}: No se detecto pose, usando centro del bbox"
             )
             waist_x = (x1 + x2) / 2.0
@@ -66,12 +61,6 @@ class DepthEstimator(DepthEstimatorBase):
             waist_y = y1 + waist_center_norm[1] * (y2 - y1)
 
         depth = self._calculate_depth_at_point(frame, int(waist_x), int(waist_y))
-
-        logfire.info(
-            f"[DepthCalculator] Frame {frame_num}: "
-            f"Profundidad en cintura ({int(waist_x)}, {int(waist_y)}): {depth:.2f}m "
-            f"(scale: {current_camera_scale:.3f})"
-        )
 
         return depth
 

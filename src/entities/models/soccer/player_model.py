@@ -42,3 +42,18 @@ class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, Dynami
     ball_id: int | None = Field(foreign_key="ball_states.id", default=None, description="Id de la pelota si el jugador posee el balon", nullable=True)
 
     player: PlayerModel = Relationship(back_populates="states")
+
+    def recalculate_physics(self):
+        self.dx = 0
+        self.dy = 0
+        self.delta_x = 0
+        self.delta_y = 0
+        self.distance_meters = 0
+
+        self.vx = 0
+        self.vy = 0
+        self.speed_kmh = 0
+
+        self.acceleration = 0
+        self.ax = 0
+        self.ay = 0
