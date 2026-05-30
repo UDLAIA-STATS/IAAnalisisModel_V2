@@ -5,6 +5,7 @@ import logfire
 import numpy as np
 from sqlmodel import Session
 
+from src.core.repository.player_states_repository import PlayerStatesRepository
 from src.core.repository.player_repository import PlayerRepository
 from src.entities.models.soccer.player_model import PlayerState
 
@@ -75,8 +76,38 @@ class PhysicsCalculatorBase:
             value.sort(key=lambda state: state.frame_number)
 
         self.validate_player_frames(states, session)
+        self._calculate_coords(states, session)
+        
+        cleared_states = {}
+
+        for values in states.values():
+            prev_state = None
+            for value in values:
+                if prev_state is None:
+                    prev_state = value
+                    continue
+
+                if prev_state is None:
+                    logfire.fatal("[PhysicsCalculator] prev_state is None")
+
+                if prev_state.dx == value.dx and prev_state.dy == value.dy:
+                    continue
+
+                cleared_states[value.player_id] = values
+                prev_state = value
+
+            values.sort(key=lambda state: state.frame_number)
 
         return states
+
+    def _calculate_coords(self, values: Dict[int, List[PlayerState]], session: Session):
+        for _, states in values.items():
+            for state in states:
+                bbox = [state.x1, state.y1, state.x2, state.y2]
+                dx, dy = self._bbox_to_center(bbox)
+                state.dx = float(dx)
+                state.dy = float(dy)
+                PlayerStatesRepository.update_state(state, session)
 
     def _generate_middle_state(
     self,

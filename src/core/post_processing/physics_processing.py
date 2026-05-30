@@ -41,27 +41,24 @@ class PhysicsProcessing(PhysicsCalculatorBase):
 
                 actual_constant = 1
 
-                xo = self._bbox_to_center(
-                    [prev_state.x1, prev_state.y1, prev_state.x2, prev_state.y2]
-                )
-                xf = self._bbox_to_center([state.x1, state.y1, state.x2, state.y2])
+                # xo = self._bbox_to_center(
+                #     [prev_state.x1, prev_state.y1, prev_state.x2, prev_state.y2]
+                # )
+                # xf = self._bbox_to_center([state.x1, state.y1, state.x2, state.y2])
 
-                prev_state.dx = float(xo[0])
-                prev_state.dy = float(xo[1])
+                # prev_state.dx = float(xo[0])
+                # prev_state.dy = float(xo[1])
 
-                state.dx = float(xf[0])
-                state.dy = float(xf[1])
+                # state.dx = float(xf[0])
+                # state.dy = float(xf[1])
 
-                xo = xo
-                xf = xf
                 delta_t = state.timestamp - prev_state.timestamp
                 logfire.info(f"Delta t: {delta_t} result from {prev_state.timestamp} in frame {prev_state.frame_number} to {state.timestamp} in frame {state.frame_number}")
-                distance, delta_x = self.calculate_distance(xo, xf)
+                distance, delta_x = self.calculate_distance(np.asarray([prev_state.dx, prev_state.dy]), np.asarray([state.dx, state.dy]))
 
                 vo, vf, speed_ms, acceleration_ms, ax, ay = self.calculate_kinematics(
                     delta_x * actual_constant, delta_t, np.asarray([prev_state.vx, prev_state.vy])
                 )
-
 
                 state.dx_meters = float(delta_x[0]) * actual_constant
                 state.dy_meters = float(delta_x[1]) * actual_constant
