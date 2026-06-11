@@ -15,8 +15,9 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     shirt_number: int = Field(nullable=True, default=None)
     crop_path: str = Field(nullable=True, default=None)
 
-    states: list["PlayerState"] = Relationship(back_populates="player")
-    numbers: list["PlayerNumbers"] = Relationship(back_populates="player")
+    states: list["PlayerState"] = Relationship(back_populates="player", cascade_delete=True)
+    numbers: list["PlayerNumbers"] = Relationship(back_populates="player", cascade_delete=True)
+    depth_history: list["DepthHistory"] = Relationship(back_populates="player", cascade_delete=True)
 
 
 class PlayerNumbers(NumericIdModel, AuditTable, table=True):
@@ -27,6 +28,42 @@ class PlayerNumbers(NumericIdModel, AuditTable, table=True):
     frame_number: int
 
     player: PlayerModel = Relationship(back_populates="numbers")
+
+
+class DepthHistory(NumericIdModel, AuditTable, table=True):
+    __tablename__ = "depth_history"  # type: ignore
+
+    match_id: int = Field(index=True)
+    frame_num: int = Field(index=True)
+    timestamp: float = Field(index=True, decimal_places=10)
+
+    depth: float = Field(
+        default=1.0,
+        decimal_places=6,
+        description="Profundidad del campo en relacion con la camara",
+    )
+    pixels_to_meters: float = Field(
+        default=1.0, decimal_places=6, description="Conversion de pixeles a metros"
+    )
+    camera_scale: float = Field(
+        default=1.0,
+        decimal_places=6,
+        description="Escala de la camara (nivel de zoom o aumento focal)",
+    )
+    player_id: int = Field(
+        foreign_key="players.id",
+        index=True,
+        description="Id del jugador al que pertenece la constante",
+    )
+
+    constant: float = Field(
+        default=1.0,
+        decimal_places=6,
+        description="Constante de conversion, resultado de depth * pixels_to_meters, camera scale is already considered in depth",
+    )
+
+    player: "PlayerModel" = Relationship(back_populates="depth_history")
+
 
 
 class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, DynamicMovementModel, table=True):

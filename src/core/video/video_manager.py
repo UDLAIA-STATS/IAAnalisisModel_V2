@@ -14,6 +14,8 @@ class VideoManager(VideoManagerBase):
 
         frame_rate = self.get_fps()
         total_frames = self.get_total_frames()
+        logfire.info(f"[VideoManager] Video opened with {total_frames} frames at {frame_rate} fps")
+        actual_frame = 0
         self.frame_size = self.get_frame_size()
         value_store.set("frame_rate", frame_rate)
         value_store.set("total_frames", total_frames)
@@ -23,13 +25,18 @@ class VideoManager(VideoManagerBase):
 
         while frame_count < total_frames:
             to_read = min(batch_size, total_frames - frame_count)
-            batch = self.get_batch(to_read, match_id)
+            batch = self.get_batch(to_read)
+            actual_frame += len(batch)
+            logfire.info(f"[VideoManager] Reading {actual_frame}/{total_frames} frames")
 
             if not batch or len(batch) == 0:
                 break
 
             frame_count += len(batch)
             yield batch
+
+        if len(self.preprocessor.windows_frames) > 0:
+            yield self.preprocessor.flush()
 
         self.close()
 

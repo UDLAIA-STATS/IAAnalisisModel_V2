@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
+import signal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logfire
 import uvicorn
 
+from src.entities.utils.spark_instance import graceful_shutdown
 from src.core.database import connection_manager
 from src.presentation.api.v1.analyze_router import router as analyze_router
 from src.config.routes import ensure_directories, validate_model
@@ -22,6 +24,8 @@ async def lifespan(app: FastAPI):
     logfire.notice("Application started, ready to receive requests")
     yield
     connection_manager.dispose()
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
     print("Application is shutting down...")
 
 

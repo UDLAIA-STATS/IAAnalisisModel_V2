@@ -53,7 +53,7 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                 # state.dy = float(xf[1])
 
                 delta_t = state.timestamp - prev_state.timestamp
-                logfire.info(f"Delta t: {delta_t} result from {prev_state.timestamp} in frame {prev_state.frame_number} to {state.timestamp} in frame {state.frame_number}")
+                # logfire.info(f"Delta t: {delta_t} result from {prev_state.timestamp} in frame {prev_state.frame_number} to {state.timestamp} in frame {state.frame_number}")
                 distance, delta_x = self.calculate_distance(np.asarray([prev_state.dx, prev_state.dy]), np.asarray([state.dx, state.dy]))
 
                 vo, vf, speed_ms, acceleration_ms, ax, ay = self.calculate_kinematics(

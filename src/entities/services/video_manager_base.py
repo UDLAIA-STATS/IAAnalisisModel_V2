@@ -7,6 +7,7 @@ import cv2
 from cv2.typing import MatLike
 import logfire
 
+from src.entities.services.video_preprocessor import VideoPreprocessor
 from src.config.routes import ANOTATED_OUTPUT_IMAGES, ANOTATED_VIDEOS_DIR
 from src.entities.models.app.video_item import VideoItem
 
@@ -30,6 +31,7 @@ class VideoManagerBase(ABC):
         h, w = first_frame.shape[:2]
         self.writing_width = w
         self.writing_height = h
+        self.preprocessor = VideoPreprocessor(match_id=match_id, n_samples=5)
 
         self.writer = cv2.VideoWriter(
             self.output_video.as_posix(),
@@ -83,7 +85,7 @@ class VideoManagerBase(ABC):
 
         return True
 
-    def get_batch(self, batch_size: int, match_id: int):
+    def get_batch(self, batch_size: int):
         """
         Get a batch of frames from the video.
         params:
@@ -92,8 +94,10 @@ class VideoManagerBase(ABC):
             a list of frames with shape (frame, timestamp, frame number)
         """
         batch: List[VideoItem] = []
+        fps = self.get_fps()
+        self.preprocessor.fps = fps
 
-        for _ in range(batch_size):
+        while len(batch) < batch_size:
             frame_exists, frame = self.cap.read()
 
             if not frame_exists:
@@ -101,15 +105,12 @@ class VideoManagerBase(ABC):
 
             dt = float(self.cap.get(cv2.CAP_PROP_POS_MSEC)) * 0.001
             frame_num = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-            batch.append(
-                VideoItem(
-                    frame=frame,
-                    annotated_frame=frame,
-                    timestamp=dt,
-                    match_id=match_id,
-                    frame_num=frame_num,
-                )
-            )
+            selected = self.preprocessor.add_frame(frame, dt, frame_num)
+
+            if not selected:
+                continue
+
+            batch.extend(selected)
 
         return batch
 

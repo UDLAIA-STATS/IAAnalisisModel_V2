@@ -1,4 +1,5 @@
 import traceback
+from typing import List
 
 import logfire
 from sqlmodel import Session
@@ -78,7 +79,7 @@ class NumberAndColorRecognition(AnalysisStepHandler):
     def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]
         states = PlayerStatesRepository.get_states_by_frame(video_item.match_id, video_item.frame_num, session=session)
-        logfire.info(f"[NumberAndColorRecognition] Number of states: {len(states)}")
+        # logfire.info(f"[NumberAndColorRecognition] Number of states: {len(states)}")
         labels = []
 
         if len(states) == 0:

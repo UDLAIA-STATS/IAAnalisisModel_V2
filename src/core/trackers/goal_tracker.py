@@ -18,16 +18,21 @@ from src.entities.types.detector_types import DetectorTypes
 
 
 class GoalTracker(DetectorBase):
-    def __init__(self, tracker_config_file: Path | None, model: Path = MODEL_GOALS_PATH, type: DetectorTypes = DetectorTypes.DETECTION):
+    def __init__(
+        self,
+        tracker_config_file: Path | None,
+        model: Path = MODEL_GOALS_PATH,
+        type: DetectorTypes = DetectorTypes.DETECTION,
+    ):
         super().__init__(model, tracker_config_file, type)
         self.classes = {0: goal_annotator}
         self.types_map = {0: GoalModel}
 
     @override
-    def detect(self, frame) -> Sequence[Union[Results, Detections]]:
+    def detect(self, frames) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         return self.model(
-            frame,
+            frames,
             conf=0.15,
             verbose=False,
             iou=0.45,
@@ -36,7 +41,10 @@ class GoalTracker(DetectorBase):
 
     @override
     def extract_detections(
-        self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
+        self,
+        results: Sequence[Union[Results, Detections]],
+        objects_ids: List[int],
+        video_item: VideoItem,
     ) -> dict[int, List[TrackData]]:
         detections_map: dict[int, List[TrackData]] = {}
         detections = Detections.from_ultralytics(results[0])
@@ -49,7 +57,7 @@ class GoalTracker(DetectorBase):
             annotator = self.classes[object_id]
             # annotator.set_detections(filtered_detections)
 
-            data = list(self._extract_tracks_data(filtered_detections, video_item))  # type: ignore
+            data = list(self._extract_tracks_data(filtered_detections))  # type: ignore
 
             if object_id not in detections_map:
                 detections_map[object_id] = data
@@ -61,15 +69,25 @@ class GoalTracker(DetectorBase):
             for dt in data:
                 labels.append(f"Goal | {dt.confidence:.2f}")
 
-            video_item.annotated_frame = annotator.annotate(video_item.frame, filtered_detections, labels)
+            video_item.annotated_frame = annotator.annotate(
+                video_item.frame, filtered_detections, labels
+            )
 
         return detections_map
 
     @override
-    def _save_tracks(self, detected_tracks: List[TrackData], video_item: VideoItem, object: type[SQLModel], session: Session):
+    def _save_tracks(
+        self,
+        detected_tracks: List[TrackData],
+        video_item: VideoItem,
+        object: type[SQLModel],
+        session: Session,
+    ):
         # goals_added = []
         for track in detected_tracks:
-            goals = GoalRepository.get_goals_by_frame_num(video_item.match_id, video_item.frame_num, session)
+            goals = GoalRepository.get_goals_by_frame_num(
+                video_item.match_id, video_item.frame_num, session
+            )
 
             new_goal = GoalModel(
                 match_id=video_item.match_id,

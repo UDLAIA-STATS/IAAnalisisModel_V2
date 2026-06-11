@@ -2,11 +2,11 @@ import logfire
 from sqlmodel import Session
 
 from src.core.repository.task_repository import TaskRepository
-from src.core.services.player_validator import PlayerValidator
+from src.core.services.player_validator_spark import player_validator_cls
 from src.entities.models.requests.queue_model import TaskStep
 from src.core.post_processing.physics_processing import physics_procesor
 from src.entities.types.states import StatesModel
-from src.core.services.player_validator_physics import physical_validator
+from src.core.services.player_validator_physics_spark import physical_validator
 from src.core.repository.player_states_repository import PlayerStatesRepository
 
 import traceback
@@ -32,7 +32,7 @@ class ValidationProcess:
         
         try:
 
-            PlayerValidator().validate(request.match_id, total_frames, session)
+            player_validator_cls.validate(request.match_id, total_frames, session)
             physics_procesor.process(request.match_id, fps, session)
             needs_restart = physical_validator.validate(request.match_id, session)
 

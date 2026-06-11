@@ -5,7 +5,7 @@ import logfire
 from sqlmodel import Session, col, func, select
 
 from src.entities.models.soccer.player_model import PlayerModel, PlayerState
-from src.entities.models.soccer.depth_history import DepthHistory
+from src.entities.models.soccer import DepthHistory
 from src.core.repository.depth_history_repository import DepthRepository
 
 class PlayerStatesRepository:

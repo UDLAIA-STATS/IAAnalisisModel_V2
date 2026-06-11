@@ -22,6 +22,7 @@ from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 from src.core.tasks.steps.conversion_steps import ConversionCalculatorSteps
 from src.core.vision.camera_scale import scale_motion_detector
+from src.core.vision import pitch_homography
 
 class Orchestrator:
     def __init__(self):
@@ -63,6 +64,8 @@ class Orchestrator:
             total_frames = video_manager.get_total_frames()
             fps = video_manager.get_fps()
             scale_motion_detector.start(video_manager.get_first_frame())
+            frame_w, frame_h = video_manager.get_frame_size()
+            pitch_homography.set_reference_frame_size(int(frame_w), int(frame_h))
 
             video_batching_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(video_batching_step, session)
@@ -82,27 +85,34 @@ class Orchestrator:
                 step_number=2,
             )
             batches_count = 1
+            total_batches = total_frames // int(settings.BATCH_SIZE)
 
             try:
-                for batch in tqdm.tqdm(batches, total=total_frames // int(settings.BATCH_SIZE), postfix=f"Actual batch: {batches_count}"):
-                    for video_item in batch:
-                        time_reporter.start("Object Detection")
-                        object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
-                        time_reporter.stop("Object Detection")
-                        time_reporter.start("Color and Number Recognition")
-                        color_number_recognizer.execute(session=session, video_item=video_item)
-                        time_reporter.stop("Color and Number Recognition")
-                        video_manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
+                with tqdm.tqdm(total=total_batches, desc="Processing Video") as pbar:
+                    for batch in batches:
 
-                        time_reporter.start("Calculating Constants")
-                        constant_calculator_steps.execute(session=session, video_item=video_item)
-                        time_reporter.stop("Calculating Constants")
 
-                    batches_count += 1
+                        for video_item in batch:
+                            time_reporter.start("Object Detection")
+                            object_detection.execute(session=session, video_item=video_item, track_manager=tracker_manager)
+                            time_reporter.stop("Object Detection")
+
+                            time_reporter.start("Color and Number Recognition")
+                            color_number_recognizer.execute(session=session, video_item=video_item)
+                            time_reporter.stop("Color and Number Recognition")
+                            video_manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
+
+                            time_reporter.start("Calculating Constants")
+                            constant_calculator_steps.execute(session=session, video_item=video_item, video_manager=video_manager)
+                            time_reporter.stop("Calculating Constants")
+
+                        pbar.set_postfix({"Actual batch": batches_count})
+                        pbar.update(1)
+                        batches_count += 1
 
             except Exception as e:
                 processing_batch_step.state = StatesModel.FAILED
-                processing_batch_step.message = f"Error procesando batch: {traceback.format_exc(500)}"
+                processing_batch_step.message = f"Error procesando batch: {traceback.format_exc(490)}"
                 TaskRepository.upsert_task_step(processing_batch_step, session)
                 task.general_state = StatesModel.FAILED
                 TaskRepository.upsert_task(task, session)

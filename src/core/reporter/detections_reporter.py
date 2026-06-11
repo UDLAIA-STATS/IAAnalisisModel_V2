@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from pydantic import BaseModel
 from sqlmodel import Session
 
+from src.core.repository.homography_repository import HomographyRepository
 from src.entities.types.bucket_types import FilePurposeTypes
 from src.config.routes import DETECTED_OBJECTS_METRICS_DIR, DIAGRAMS_DIR
 from src.core.repository.ball_repository import BallRepository
@@ -30,6 +31,7 @@ class ReportRow(BaseModel):
     distance: float = 0.0
     acceleration: float = 0.0
     timestamp: float
+    homography_results: str = ""
 
 
 class DetectionsReporter:
@@ -50,6 +52,7 @@ class DetectionsReporter:
         report_rows.extend(self.get_goals(match_id, session))
         report_rows.extend(self.get_balls(match_id, session))
         report_rows.extend(self.get_players(match_id, session))
+        report_rows.extend(self.get_homography_values(match_id, session))
 
         report_path = (
             DETECTED_OBJECTS_METRICS_DIR / f"report_{match_id}_{uuid.uuid4()}.csv"
@@ -71,6 +74,7 @@ class DetectionsReporter:
                     "distance",
                     "acceleration",
                     "timestamp",
+                    "homography_results",
                 ]
             )
 
@@ -88,6 +92,7 @@ class DetectionsReporter:
                         row.distance,
                         row.acceleration,
                         row.timestamp,
+                        row.homography_results,
                     ]
                 )
 
@@ -125,6 +130,25 @@ class DetectionsReporter:
             chart_keys["speed_chart"],
             chart_keys["distance_chart"],
         )
+
+    def get_homography_values(self, match_id: int, session: Session):
+        homographies = HomographyRepository.get_homographies_by_match_id(match_id, session)
+        report_rows: List[ReportRow] = []
+
+        for homography in homographies:
+            report_rows.append(
+                ReportRow(
+                    frame_number=homography.frame_num,
+                    object_type="homography",
+                    track_id=0,
+                    bbox="",
+                    confidence=homography.confidence,
+                    timestamp=0,
+                    homography_results=homography.H_json,
+                )
+            )
+
+        return report_rows
 
     def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:        
         balls = BallRepository.get_balls_by_match_id(match_id, session)

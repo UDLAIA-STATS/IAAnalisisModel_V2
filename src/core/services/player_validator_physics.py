@@ -365,4 +365,4 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
             + self.W_TIMESTAMP * ts_score
         )
 
-physical_validator = PlayerPhysicalValidator()
+# physical_validator = PlayerPhysicalValidator()

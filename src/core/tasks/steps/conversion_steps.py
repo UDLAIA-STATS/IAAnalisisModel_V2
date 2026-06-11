@@ -1,31 +1,58 @@
 import logfire
 from sqlmodel import Session
 
+from src.core.video.video_manager import VideoManager
 from src.core.repository.depth_history_repository import DepthRepository
 from src.core.repository.player_states_repository import PlayerStatesRepository
 from src.entities.models.app.video_item import VideoItem
 from src.entities.interfaces.app.analysis_step_handler import AnalysisStepHandler
-from src.core.vision import scale_motion_detector, player_depth_calculator, pixel_conversion_handler
+from src.core.vision import (
+    scale_motion_detector,
+    player_depth_calculator,
+    pixel_conversion_handler,
+    pitch_homography,
+)
 
-from src.entities.models.soccer.depth_history import DepthHistory
+from src.entities.models.soccer import DepthHistory
+
 
 class ConversionCalculatorSteps(AnalysisStepHandler):
     name = "Constant Conversion Calculator"
     number_step = 4
+    last_frame_calculated = 0
+    frame_step = 30
 
     def execute(self, session: Session, **kwargs) -> bool:
         video_item: VideoItem = kwargs["video_item"]
- 
-        states = PlayerStatesRepository.get_states_by_frame(video_item.match_id, video_item.frame_num, session=session)
+        manager: VideoManager = kwargs["video_manager"]
+
+        states = PlayerStatesRepository.get_states_by_frame(
+            video_item.match_id, video_item.frame_num, session=session
+        )
         actual_depth = player_depth_calculator.get_last_depth()
         actual_scale = scale_motion_detector.get_current_scale()
-        actual_pixel_conversion = pixel_conversion_handler.get_current_conversion()
-        constant = actual_depth * actual_scale * actual_pixel_conversion
-        max_depth, max_pixels_to_meters = DepthRepository.get_max_values(session)
+        actual_pixel_conversion = pixel_conversion_handler.calculate_value(video_item.frame)
+        result = pitch_homography.calibrate(
+            video_item,
+            actual_scale,
+            0,
+            session,
+        )
+
+        video_item.annotated_frame = pitch_homography.draw_debug(
+            video_item.annotated_frame, result
+        )
+        manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
 
         try:
             for state in states:
-                bbox_height = state.y2 - state.y1
+                last_player_depth = DepthRepository.get_depth_by_player(
+                    state.player.match_id,
+                    state.player_id,
+                    video_item.frame_num,
+                    session=session,
+                )
+
                 depth_history = DepthHistory(
                     player_id=state.player_id,
                     match_id=video_item.match_id,
@@ -33,7 +60,11 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
                     timestamp=video_item.timestamp,
                 )
 
-                if video_item.frame_num % 30 != 0:
+                if (
+                    self.last_frame_calculated != video_item.frame_num
+                    and video_item.frame_num - self.last_frame_calculated
+                    > self.frame_step
+                ):
                     bbox = [int(state.x1), int(state.y1), int(state.x2), int(state.y2)]
                     actual_scale = scale_motion_detector.update(video_item.frame)
                     actual_depth = player_depth_calculator.process_player_depth(
@@ -43,15 +74,13 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
                         frame_num=video_item.frame_num,
                     )
 
-                    constant = (actual_depth * bbox_height) / 1.75
+                elif last_player_depth is not None:
+                    depth_history.depth = last_player_depth.depth
+                    depth_history.camera_scale = last_player_depth.camera_scale
 
-                    if constant > 1:
-                        logfire.error(f"Constant value is greater than 1: {constant}")
-                
                 depth_history.depth = float(actual_depth)
                 depth_history.pixels_to_meters = float(actual_pixel_conversion)
                 depth_history.camera_scale = float(actual_scale)
-                depth_history.constant = float(constant)
 
                 session.add(depth_history)
                 session.flush()

@@ -3,7 +3,7 @@ from typing import Optional, Sequence
 
 from sqlmodel import Session, col, select
 
-from src.entities.models.soccer.depth_history import DepthHistory
+from src.entities.models.soccer import DepthHistory
 
 class DepthRepository:
     @staticmethod

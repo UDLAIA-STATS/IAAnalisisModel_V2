@@ -36,5 +36,18 @@ class PlayerRepository:
         session.flush()
         player_id = player.id
         return player_id
+    
+    @staticmethod
+    def delete_player(player_id: int, session: Session) -> None:
+        player = session.get(PlayerModel, player_id)
+
+        if player is None:
+            return
+
+        # for state in player.states:
+        #     session.delete(state)
+
+        session.delete(player)
+        session.commit()
 
     

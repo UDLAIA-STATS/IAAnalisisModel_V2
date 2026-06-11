@@ -62,4 +62,49 @@ class ColorRecognizer:
 
         return rgb_tuple, hex_color
 
+#     def extract_color(crop: np.ndarray, n_clusters: int = 5, spatial_weight: float = 0.3):
+#         h, w, _ = crop.shape
+
+#         lab_img = cv2.cvtColor(crop, cv2.COLOR_BGR2LAB)
+#         l_channel = lab_img[:, :, 0]
+
+#         # Bug 1 fixed: parenthesize full condition before .ravel()
+#         valid_mask = ((l_channel >= 30) & (l_channel <= 250)).ravel()
+
+#         y_coords, x_coords = np.indices((h, w))
+
+#         # Bug 2 fixed: apply valid_mask to coords as well
+#         colors_flat = lab_img.reshape((-1, 3))[valid_mask]
+#         x_flat = x_coords.ravel()[valid_mask].reshape(-1, 1).astype(float)
+#         y_flat = y_coords.ravel()[valid_mask].reshape(-1, 1).astype(float)
+
+#         # Fallback if too few valid pixels survive the luminance filter
+#         if valid_mask.sum() < n_clusters:
+#             colors_flat = lab_img.reshape((-1, 3))
+#             x_flat = x_coords.ravel().reshape(-1, 1).astype(float)
+#             y_flat = y_coords.ravel().reshape(-1, 1).astype(float)
+
+#         features = np.hstack((colors_flat.astype(float), x_flat, y_flat))
+
+#         scaler = StandardScaler()
+#         features_scaled = scaler.fit_transform(features)
+#         features_scaled[:, 3:] *= spatial_weight
+
+#         kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+#         labels = kmeans.fit_predict(features_scaled)
+
+#         counts = np.bincount(labels)
+#         best_cluster_idx = int(np.argmax(counts))
+
+#         cluster_mask = labels == best_cluster_idx
+#         median_lab = np.median(colors_flat[cluster_mask], axis=0)
+
+#         best_lab_color = np.uint8([[median_lab]]) # type: ignore
+#         best_rgb_color = cv2.cvtColor(best_lab_color, cv2.COLOR_LAB2RGB)[0][0] # type: ignore
+
+#         rgb_tuple = tuple(map(int, best_rgb_color))
+#         hex_color = "#{:02x}{:02x}{:02x}".format(*rgb_tuple)
+
+#         return rgb_tuple, hex_color
+
 jersey_color_extractor = ColorRecognizer()

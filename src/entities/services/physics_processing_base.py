@@ -42,7 +42,7 @@ class PhysicsCalculatorBase:
             )
 
             speed_ms = float(np.linalg.norm(vf) * 3.6)
-            logfire.info(f"[PhysicsCalculator] Speed is too high, new speed: {speed_ms} m/s")
+            # logfire.info(f"[PhysicsCalculator] Speed is too high, new speed: {speed_ms} m/s")
 
         acceleration_ms = float(np.linalg.norm(acceleration))
 
@@ -97,6 +97,8 @@ class PhysicsCalculatorBase:
                 prev_state = value
 
             values.sort(key=lambda state: state.frame_number)
+            frame_numbers = [value.frame_number for value in values]
+            logfire.info(f"[PhysicsCalculator] Sorted states for player {' '.join(map(str, frame_numbers))}...")
 
         return states
 
@@ -150,6 +152,9 @@ class PhysicsCalculatorBase:
             timestamp=mid_timestamp,
             confidence=mid_confidence,
         )
+        dx, dy = self._bbox_to_center([new_state.x1, new_state.y1, new_state.x2, new_state.y2])
+        new_state.dx = float(dx)
+        new_state.dy = float(dy)
         session.add(new_state)
         session.flush()
         return new_state
