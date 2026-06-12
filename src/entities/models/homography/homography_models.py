@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 import json
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 from sqlmodel import Column, Field, Relationship, Text
@@ -51,3 +52,12 @@ class HomographyResult(NumericIdModel, AuditTable, table = True):
     @H.setter
     def H(self, value: np.ndarray):
         self.H_json = json.dumps(value.tolist())
+
+@dataclass
+class CleanHomographyFrame:
+    frame_num: int
+    H: np.ndarray
+    reprojection_error: float
+    total_kpts: int
+    detected_kpts: int
+    avg_det_conf: Optional[float]

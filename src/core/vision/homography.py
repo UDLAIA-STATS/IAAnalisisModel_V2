@@ -46,6 +46,7 @@ class PitchHomography(HomographyBase):
         horizontal / vertical / diagonal clusters.
     """
 
+
     def calibrate(
         self,
         video_item: VideoItem,
@@ -54,28 +55,11 @@ class PitchHomography(HomographyBase):
         session: Session,
         use_cache: bool = False,
     ) -> HomographyResult:
-        """
-        Compute the homography for a single frame.
-
-        Parameters
-        ----------
-        frame : np.ndarray
-            BGR frame (HxWx3).
-        frame_id : int, optional
-            Frame index for logging.
-        use_cache : bool
-            If True and a cached H exists, skip detection and return a result
-            using the cached matrix (useful for static cameras).
-
-        Returns
-        -------
-        HomographyResult
-        """
         h, w = video_item.frame.shape[:2]
-
+ 
         if self.reference_frame_size is None or w != self.reference_frame_size[0] or h != self.reference_frame_size[1]:
             self.reference_frame_size = (w, h)
-
+ 
         if use_cache and self._cached_H is not None:
             logfire.debug(f"frame {video_item.frame_num}: using cached homography")
             homography = HomographyResult(
@@ -90,90 +74,70 @@ class PitchHomography(HomographyBase):
             session.add(homography)
             session.flush()
             return homography
-
+ 
         h, w = video_item.frame.shape[:2]
-
+ 
         segments = self._detect_lines(video_item.frame)
         segments = self._merge_segments(segments)
-        logfire.debug(
-            f"[Homography] frame {video_item.frame_num}: {len(segments)} line segments detected"
-        )
-
+        logfire.debug(f"[Homography] frame {video_item.frame_num}: {len(segments)} line segments detected")
+ 
         clusters = self._cluster_lines(segments)
-        fitted_lines = self._fit_cluster_lines(clusters)
-
+  
         adapted_points = self._transform_predetermined_points(w, h, camera_scale, camera_tilt)
-        adapted_points = self._snap_predetermined_points(adapted_points, fitted_lines)
-
+ 
         candidate_image_pts = self._segments_to_candidates(clusters, w, h)
         candidate_image_pts = self._cluster_intersections(candidate_image_pts)
-        logfire.debug(
-            f"[Homography] frame {video_item.frame_num}: {len(candidate_image_pts)} candidate intersections"
-        )
-        
+        logfire.debug(f"[Homography] frame {video_item.frame_num}: {len(candidate_image_pts)} candidate intersections")
+ 
         homography = HomographyResult(
-                reprojection_error=float("inf"),
-                inlier_count=0,
-                is_valid=False,
-                frame_num=video_item.frame_num,
-                match_id=video_item.match_id,
-            )
+            reprojection_error=float("inf"),
+            inlier_count=0,
+            is_valid=False,
+            frame_num=video_item.frame_num,
+            match_id=video_item.match_id,
+        )
         session.add(homography)
         session.flush()
-
+ 
         keypoints = self._build_correspondences(candidate_image_pts, w, h, adapted_points, homography.id)
         session.add_all(keypoints)
         session.flush()
         homography.keypoints = keypoints
-        
-        logfire.debug(
-            f"[Homography] frame {video_item.frame_num}: {len(keypoints)} correspondences"
-        )
-
+ 
+        logfire.debug(f"[Homography] frame {video_item.frame_num}: {len(keypoints)} correspondences")
+ 
         if len(keypoints) < self.min_keypoints:
-            logfire.warning(
-                f"[Homography] frame {video_item.frame_num}: insufficient correspondences ({len(keypoints)})"
-            )
+            logfire.warning(f"[Homography] frame {video_item.frame_num}: insufficient correspondences ({len(keypoints)})")
             homography.H = np.eye(3)
             session.add(homography)
             session.flush()
-
             return homography
-
+ 
         img_pts = np.array([kp.image_pt for kp in keypoints], dtype=np.float32)
         fld_pts = np.array([kp.field_pt for kp in keypoints], dtype=np.float32)
-
-        H, mask = cv2.findHomography(
-            img_pts, fld_pts, cv2.RANSAC, self.ransac_threshold
-        )
-
+ 
+        H, mask = cv2.findHomography(img_pts, fld_pts, cv2.RANSAC, self.ransac_threshold)
+ 
         if H is None:
-            logfire.warning(
-                f"[Homography] frame {video_item.frame_num}: cv2.findHomography returned None"
-            )
             homography.H = np.eye(3)
             homography.inlier_count = 0
             session.add(homography)
             session.flush()
-
             return homography
-
+ 
         inliers = int(mask.sum()) if mask is not None else 0
         repr_err = _reprojection_error(H, img_pts, fld_pts)
-
         geometry_ok = self.validate_homography(H)
-
+ 
         is_valid = (
             repr_err <= self.max_reprojection_error
             and inliers >= self.min_keypoints
             and geometry_ok
         )
-
+ 
         if not is_valid:
-            logfire.warning(
-                f"[Homography] frame {video_item.frame_num}: invalid homography (repr_err={repr_err})"
-            )
-
+            logfire.warning(f"[Homography] frame {video_item.frame_num}: invalid homography (repr_err={repr_err})")
+ 
         result = HomographyResult(
             keypoints=keypoints,
             reprojection_error=repr_err,
@@ -185,9 +149,10 @@ class PitchHomography(HomographyBase):
         result.H = H
         session.add(result)
         session.flush()
-
+ 
         self._last_result = result
         return result
+ 
 
 
 _predetermined: dict[str, tuple[float, float]] = {

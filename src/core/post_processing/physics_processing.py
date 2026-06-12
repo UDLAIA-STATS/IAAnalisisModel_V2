@@ -2,10 +2,12 @@ import logfire
 import numpy as np
 from sqlmodel import Session
 
+from src.core.vision.homography_interpolator import HomographyInterpolator
 from src.core.repository.depth_history_repository import DepthRepository
 from src.entities.services.physics_processing_base import PhysicsCalculatorBase
 from src.core.repository.player_states_repository import PlayerStatesRepository
 from src.core.vision.pixels_converter import pixel_conversion_handler
+from src.core.repository.homography_repository import HomographyRepository
 
 
 class PhysicsProcessing(PhysicsCalculatorBase):
@@ -14,6 +16,16 @@ class PhysicsProcessing(PhysicsCalculatorBase):
 
         if not states:
             return
+
+        try:
+            interpolator = HomographyInterpolator.from_match(match_id, session)
+        except ValueError:
+            logfire.error(
+                f"[PhysicsProcessing] No clean homographies for match {match_id},"
+                " cannot project to field coordinates"
+            )
+            return
+
         for _, player_states in states.items():
             prev_state = None
             for state in player_states:
@@ -28,6 +40,7 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                 gap = state.frame_number - prev_state.frame_number
 
                 if gap > fps * 3:
+                    prev_state = state
                     continue
 
                 # actual_constant = pixel_conversion_handler.get_current_conversion()
@@ -41,31 +54,43 @@ class PhysicsProcessing(PhysicsCalculatorBase):
 
                 actual_constant = 1
 
-                # xo = self._bbox_to_center(
-                #     [prev_state.x1, prev_state.y1, prev_state.x2, prev_state.y2]
-                # )
-                # xf = self._bbox_to_center([state.x1, state.y1, state.x2, state.y2])
+                curr_pos = interpolator.project(
+                    state.x1,
+                    state.y1,
+                    state.x2,
+                    state.y2,
+                    state.frame_number,
+                )
+                state.dx_meters = curr_pos.x_meters
+                state.dy_meters = curr_pos.y_meters
 
-                # prev_state.dx = float(xo[0])
-                # prev_state.dy = float(xo[1])
-
-                # state.dx = float(xf[0])
-                # state.dy = float(xf[1])
+                if prev_state.dx_meters is None and prev_state.dy_meters is None:
+                    prev_pos = interpolator.project(
+                        prev_state.x1,
+                        prev_state.y1,
+                        prev_state.x2,
+                        prev_state.y2,
+                        prev_state.frame_number,
+                    )
+                    prev_state.dx_meters = prev_pos.x_meters
+                    prev_state.dy_meters = prev_pos.y_meters
 
                 delta_t = state.timestamp - prev_state.timestamp
                 # logfire.info(f"Delta t: {delta_t} result from {prev_state.timestamp} in frame {prev_state.frame_number} to {state.timestamp} in frame {state.frame_number}")
-                distance, delta_x = self.calculate_distance(np.asarray([prev_state.dx, prev_state.dy]), np.asarray([state.dx, state.dy]))
+                xo = np.array([prev_state.dx_meters, prev_state.dy_meters])
+                xf = np.array([state.dx_meters, state.dy_meters])
+
+                distance, delta_x = self.calculate_distance(xo, xf)
 
                 vo, vf, speed_ms, acceleration_ms, ax, ay = self.calculate_kinematics(
-                    delta_x * actual_constant, delta_t, np.asarray([prev_state.vx, prev_state.vy])
+                    delta_x,
+                    delta_t,
+                    np.asarray([prev_state.vx, prev_state.vy]),
                 )
-
-                state.dx_meters = float(delta_x[0]) * actual_constant
-                state.dy_meters = float(delta_x[1]) * actual_constant
 
                 state.delta_x = float(delta_x[0])
                 state.delta_y = float(delta_x[1])
-                state.distance_meters = float(distance) * actual_constant
+                state.distance_meters = float(distance)
 
                 state.ax = float(ax)
                 state.ay = float(ay)

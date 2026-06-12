@@ -42,7 +42,6 @@ class PhysicsCalculatorBase:
             )
 
             speed_ms = float(np.linalg.norm(vf) * 3.6)
-            # logfire.info(f"[PhysicsCalculator] Speed is too high, new speed: {speed_ms} m/s")
 
         acceleration_ms = float(np.linalg.norm(acceleration))
 
@@ -97,8 +96,6 @@ class PhysicsCalculatorBase:
                 prev_state = value
 
             values.sort(key=lambda state: state.frame_number)
-            frame_numbers = [value.frame_number for value in values]
-            logfire.info(f"[PhysicsCalculator] Sorted states for player {' '.join(map(str, frame_numbers))}...")
 
         return states
 
