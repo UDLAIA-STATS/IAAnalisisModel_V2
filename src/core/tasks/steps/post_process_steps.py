@@ -40,6 +40,7 @@ class ValidationProcess:
                 PlayerStatesRepository.recalculate_physics(request.match_id, session)                
                 physics_procesor.process(request.match_id, fps, session)
 
+            player_validator_cls.validate(request.match_id, total_frames, session)
             validate_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(validate_step, session)
         except Exception as e:

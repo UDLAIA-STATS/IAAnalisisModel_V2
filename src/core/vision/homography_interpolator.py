@@ -83,6 +83,7 @@ class HomographyInterpolator:
     @classmethod
     def from_match(cls, match_id: int, session) -> "HomographyInterpolator":
         frames = HomographyRepository.get_clean_homographies(
-            match_id=match_id, session=session
+            match_id=match_id, session=session,
+            max_reprojection_error=3.0
         )
         return cls(frames)

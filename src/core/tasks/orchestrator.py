@@ -21,7 +21,7 @@ from src.entities.models.requests.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 from src.core.tasks.steps.conversion_steps import ConversionCalculatorSteps
-from src.core.vision.camera_scale import scale_motion_detector
+from src.core.vision import scale_motion_detector, tilt_detector
 from src.core.vision import pitch_homography
 
 class Orchestrator:
@@ -63,8 +63,12 @@ class Orchestrator:
             batches = video_manager.read_video(int(settings.BATCH_SIZE), request.match_id)
             total_frames = video_manager.get_total_frames()
             fps = video_manager.get_fps()
-            scale_motion_detector.start(video_manager.get_first_frame())
+            first_frame = video_manager.get_first_frame()
+
             frame_w, frame_h = video_manager.get_frame_size()
+
+            scale_motion_detector.start(first_frame)
+            tilt_detector.start(first_frame)
             pitch_homography.set_reference_frame_size(int(frame_w), int(frame_h))
 
             video_batching_step.state = StatesModel.COMPLETED

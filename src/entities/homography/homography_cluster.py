@@ -5,6 +5,7 @@ from src.entities.utils.homography_utils import (
     _angle_deg,
     _angle_distance,
     _canonical_angle,
+    _line_intersection,
 )
 
 
@@ -71,7 +72,12 @@ class HomographyCluster:
                 mid_j = np.array([(seg_b[0] + seg_b[2]) / 2, (seg_b[1] + seg_b[3]) / 2])
 
                 perp_dist = abs(float((mid_j - mid_i) @ normal_i))
-                if perp_dist < PERP_THRESH:
+                dir = np.array([np.cos(a_i), np.sin(a_i)])
+
+                proj_i = mid_i @ dir
+                proj_j = mid_j @ dir
+
+                if perp_dist < PERP_THRESH and abs(proj_i - proj_j) < 150:
                     used[j] = True
                     group.append(seg_b)
 
@@ -99,70 +105,81 @@ class HomographyCluster:
     def _cluster_lines(
         self,
         segments: np.ndarray,
-        min_cluster_size: int = 2,
+        min_cluster_size: int = 1,
     ) -> list[list[np.ndarray]]:
-        """
-        Partition segments into angle families, camera-angle agnostic.
 
-        Key differences from the original
-        ----------------------------------
-        Direction-flip fix (the primary bug)
-            The original used raw arctan2 angles.  A line detected as
-            A→B gives +96°; the same line detected as B→A gives -84°.
-            Their arctan2 distance is 180°, so they landed in different
-            clusters even though they represent the same physical line.
-
-            Fix: convert every angle to canonical [0, π) once before any
-            comparison, and use _angle_distance() which wraps correctly
-            at π.  Both detections now produce 96° and cluster together.
-
-        Wider threshold (15° vs 8°)
-            Perspective foreshortening makes parallel pitch lines appear
-            at slightly different angles near the frame edges.  8° was
-            too tight for angled camera views and split a single line
-            family into many singleton clusters.  15° keeps all members
-            of a family together while still separating the two dominant
-            directions (touchlines ~90°, goal lines ~0°, midfield ~17°).
-
-        Drop singleton clusters
-            Single-segment clusters can never produce pitch-corner
-            intersections.  Removing them (min_cluster_size=2) eliminates
-            noise candidates that corrupt _build_correspondences.
-
-        Sort by size, descending
-            The two largest families are always the two dominant pitch-
-            line directions.  Trying them first maximises the chance
-            that the first few intersection candidates are real corners.
-        """
         if len(segments) == 0:
             return []
 
-        canon = np.array(
-            [_canonical_angle(np.arctan2(s[3] - s[1], s[2] - s[0])) for s in segments]
-        )
+        ANGLE_THRESH = np.deg2rad(5)
+        RHO_THRESH = 40.0
 
-        used = np.zeros(len(canon), dtype=bool)
         clusters: list[list[np.ndarray]] = []
-        THRESHOLD = np.deg2rad(15)
+        used = np.zeros(len(segments), dtype=bool)
 
-        for i in range(len(canon)):
+        thetas = []
+        rhos = []
+
+        for seg in segments:
+
+            x1, y1, x2, y2 = seg
+
+            theta = _canonical_angle(
+                np.arctan2(
+                    y2 - y1,
+                    x2 - x1,
+                )
+            )
+
+            rho = x1 * np.cos(theta) + y1 * np.sin(theta)
+
+            thetas.append(theta)
+            rhos.append(rho)
+
+        for i in range(len(segments)):
+
             if used[i]:
                 continue
 
             used[i] = True
-            group = [segments[i]]
 
-            for j in range(i + 1, len(canon)):
+            cluster = [segments[i]]
+
+            theta_i = thetas[i]
+            rho_i = rhos[i]
+
+            for j in range(i + 1, len(segments)):
+
                 if used[j]:
                     continue
-                if _angle_distance(canon[i], canon[j]) < THRESHOLD:
+
+                theta_j = thetas[j]
+                rho_j = rhos[j]
+
+                same_angle = (
+                    _angle_distance(
+                        theta_i,
+                        theta_j,
+                    )
+                    < ANGLE_THRESH
+                )
+
+                same_rho = abs(rho_i - rho_j) < RHO_THRESH
+
+                if same_angle and same_rho:
+
+                    cluster.append(segments[j])
+
                     used[j] = True
-                    group.append(segments[j])
 
-            if len(group) >= min_cluster_size:
-                clusters.append(group)
+            if len(cluster) >= min_cluster_size:
+                clusters.append(cluster)
 
-        clusters.sort(key=len, reverse=True)
+        clusters.sort(
+            key=len,
+            reverse=True,
+        )
+
         return clusters
 
     def _fit_cluster_lines(
@@ -217,6 +234,42 @@ class HomographyCluster:
             )
 
         return output
+
+    def _line_pairs_to_candidates(
+        self,
+        lines: list[tuple[np.ndarray, np.ndarray]],
+        frame_w: int,
+        frame_h: int,
+    ) -> list[tuple[float, float]]:
+        if len(lines) < 2:
+            return []
+
+        candidates: list[tuple[float, float]] = []
+        margin = 20
+        scale = max(frame_w, frame_h) * 2.0
+
+        for i in range(len(lines)):
+            for j in range(i + 1, len(lines)):
+                p1, d1 = lines[i]
+                p2, d2 = lines[j]
+
+                a1 = p1 - d1 * scale
+                a2 = p1 + d1 * scale
+                b1 = p2 - d2 * scale
+                b2 = p2 + d2 * scale
+
+                pt = _line_intersection(a1, a2, b1, b2)
+                if pt is None:
+                    continue
+
+                x, y = pt
+                if (
+                    -margin <= x <= frame_w + margin
+                    and -margin <= y <= frame_h + margin
+                ):
+                    candidates.append(pt)
+
+        return candidates
 
     def _cluster_intersections(
         self,

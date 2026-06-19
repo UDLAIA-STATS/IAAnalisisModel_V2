@@ -11,6 +11,7 @@ from src.core.vision import (
     player_depth_calculator,
     pixel_conversion_handler,
     pitch_homography,
+    tilt_detector
 )
 
 from src.entities.models.soccer import DepthHistory
@@ -32,10 +33,12 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
         actual_depth = player_depth_calculator.get_last_depth()
         actual_scale = scale_motion_detector.get_current_scale()
         actual_pixel_conversion = pixel_conversion_handler.calculate_value(video_item.frame)
+        actual_tilt = tilt_detector.get_current_tilt()
+        logfire.info(f"[ConversionCalculator] Actual tilt: {actual_tilt}")
         result = pitch_homography.calibrate(
             video_item,
             actual_scale,
-            0,
+            actual_tilt,
             session,
         )
 
@@ -67,6 +70,7 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
                 ):
                     bbox = [int(state.x1), int(state.y1), int(state.x2), int(state.y2)]
                     actual_scale = scale_motion_detector.update(video_item.frame)
+                    actual_tilt  = tilt_detector.update(video_item.frame)
                     actual_depth = player_depth_calculator.process_player_depth(
                         bbox=bbox,
                         current_camera_scale=actual_scale,

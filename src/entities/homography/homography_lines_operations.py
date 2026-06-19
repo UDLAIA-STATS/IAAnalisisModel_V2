@@ -1,3 +1,5 @@
+from typing import Optional
+
 import cv2
 import numpy as np
 
@@ -18,20 +20,29 @@ class HomographyLinesOperation:
         self.hough_max_line_gap = hough_max_line_gap
 
     def _preprocess_lines(self, frame: np.ndarray) -> np.ndarray:
-        lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB)
+        hsv=cv2.cvtColor(frame,cv2.COLOR_BGR2HSV)
 
-        l_channel = lab[:, :, 0]
-        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        enhanced = clahe.apply(l_channel)
-        binary = cv2.adaptiveThreshold(
-            enhanced, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 31, -5
+        white=cv2.inRange(
+            hsv,
+            (0,0,160),  # type: ignore
+            (180,80,255),  # type: ignore
+        ) # type: ignore
+
+        kernel=np.ones((5,5),np.uint8)
+
+        white=cv2.morphologyEx(
+            white,
+            cv2.MORPH_CLOSE,
+            kernel,
         )
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
-        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+        white=cv2.morphologyEx(
+            white,
+            cv2.MORPH_OPEN,
+            kernel,
+        )
 
-        return binary
+        return white
 
     def _detect_lines(self, frame: np.ndarray) -> np.ndarray:
         """
@@ -72,3 +83,37 @@ class HomographyLinesOperation:
         xa, ya = 0.0, b
         xb, yb = float(frame_w), m * frame_w + b
         return np.array([xa, ya]), np.array([xb, yb])
+
+
+    def _wall_floor_fallback_line(self, frame: np.ndarray) -> Optional[np.ndarray]:
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape[:2]
+
+        roi_y = int(h * 0.65)
+        roi = gray[roi_y:, :]
+
+        edges = cv2.Canny(roi, self.canny_low, self.canny_high)
+
+        lines = cv2.HoughLinesP(
+            edges,
+            rho=1,
+            theta=np.pi / 180,
+            threshold=max(30, self.hough_threshold // 2),
+            minLineLength=max(40, int(w * 0.35)),
+            maxLineGap=self.hough_max_line_gap,
+        )
+
+        if lines is None:
+            return None
+
+        raw = lines.reshape(-1, 4)
+
+        def score(l: np.ndarray) -> float:
+            x1, y1, x2, y2 = l.astype(float)
+            length = np.hypot(x2 - x1, y2 - y1)
+            return length - abs((y1 + y2) * 0.5 - roi.shape[0] * 0.5) * 0.5
+
+        best = max(raw, key=score)
+        x1, y1, x2, y2 = best.astype(float)
+
+        return np.array([x1, y1 + roi_y, x2, y2 + roi_y], dtype=np.float32)

@@ -75,36 +75,38 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
     def set_reference_frame_size(self, frame_w: int, frame_h: int) -> None:
         self.reference_frame_size = frame_w, frame_h
 
-
     def _transform_predetermined_points(
-        self, frame_w: int, frame_h: int, camera_scale: float, camera_tilt: float
+        self,
+        frame_w: int,
+        frame_h: int,
+        camera_scale: float,
+        camera_tilt: float,
     ) -> dict[str, tuple[float, float]]:
+
         ref_w, ref_h = self.reference_frame_size
-        if not ref_w or not ref_h:
-            raise ValueError("reference_frame_size must be set first")
+        zoom = self.reference_scale / camera_scale
 
-        norm_pts = {
-            name: (px / ref_w, py / ref_h)
-            for name, (px, py) in self.predetermined_points.items()
-        }
-        zoom_ratio = self.reference_scale / camera_scale
-        scaled_pts = {
-            name: (0.5 + (nx - 0.5) * zoom_ratio, 0.5 + (ny - 0.5) * zoom_ratio)
-            for name, (nx, ny) in norm_pts.items()
-        }
-        TILT_PX_PER_DEGREE = 0.03
-        tilt_shift = -camera_tilt * TILT_PX_PER_DEGREE
         result = {}
-        for name, (sx, sy) in scaled_pts.items():
-            ny = sy + tilt_shift
-            if -0.05 <= sx <= 1.05 and -0.05 <= ny <= 1.05:
-                result[name] = (sx * frame_w, ny * frame_h)
 
-        logfire.debug(
-            f"[Homography] _transform_predetermined_points: "
-            f"scale={camera_scale}, tilt={camera_tilt}, "
-            f"visible={len(result)}/{len(self.predetermined_points)}"
-        )
+        tilt_factor = camera_tilt * 0.002
+
+        for name, (px, py) in self.predetermined_points.items():
+
+            nx = px / ref_w
+            ny = py / ref_h
+
+            nx = 0.5 + (nx - 0.5) * zoom
+            ny = 0.5 + (ny - 0.5) * zoom
+
+            weight = 1.0 - ny
+
+            ny += tilt_factor * weight
+
+            result[name] = (
+                nx * frame_w,
+                ny * frame_h,
+            )
+
         return result
 
     def _segments_to_candidates(
@@ -151,100 +153,81 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         adapted_predetermined: dict[str, tuple[float, float]],
         result_id: int,
     ) -> list[DetectedKeypoint]:
-        """
-        Match each known field keypoint to its best pixel position.
-
-        Strategy
-        --------
-        For each keypoint that has a predetermined pixel anchor:
-
-          Detected path  — a clustered intersection candidate lies within
-            proximity_px of the anchor.  The nearest such candidate is
-            used as the image point (source="detected").
-
-          Fallback path  — no candidate is close enough.  The
-            predetermined anchor itself is used (source="predetermined",
-            confidence=0.3).
-
-        Uniqueness constraint  (critical for RANSAC)
-        --------------------------------------------
-        Every candidate pixel may be claimed by at most ONE field keypoint.
-        When two keypoints compete for the same candidate, the one with
-        the shorter anchor-to-candidate distance wins.  The loser falls
-        back to its predetermined position.
-
-        Without this constraint, two keypoints that have identical or
-        near-identical image coordinates give RANSAC a degenerate system:
-        the pixel-space constraint they add is linearly dependent, so
-        findHomography either returns None or produces a wildly incorrect H.
-
-        This is the primary reason for the repeated "inliers=0" result:
-        tl_corner and lpen_tl were both landing on the same detected
-        candidate ~(85, 185) because their predetermined anchors had
-        both been snapped to the same fitted-line projection.
-
-        Proximity radius
-        ----------------
-        8 % of the frame diagonal (vs the original 5 %).  Angled cameras
-        make predetermined anchors less accurate, so a slightly wider
-        search radius is needed.  At 576×540 this is ~63 px; at 1280×720
-        it is ~92 px.  The uniqueness constraint above prevents the wider
-        radius from causing false matches.
-        """
         diag = np.sqrt(frame_w**2 + frame_h**2)
-        proximity_px = diag * 0.08  # 8% — wider than original 5% for angled views
+        RADIUS_STEPS = [0.06, 0.10, 0.15, 0.20]
+        MIN_DETECTED = 3
 
         candidates_arr = (
             np.array(candidate_pts, dtype=np.float32) if candidate_pts else None
         )
 
-        # Pass 1: greedily assign candidates to keypoints, closest-first.
-        # claimed[cand_idx] = (best_dist, name_that_claimed_it)
-        claimed: dict[int, tuple[float, str]] = {}
-        assignments: dict[str, tuple[tuple[float, float], float]] = {}
-        # assignments[name] = (image_pt, confidence)
+        best_assignments: dict[str, tuple[tuple[float, float], float]] = {}
 
-        if candidates_arr is not None:
-            # Process keypoints in anchor-distance order so the best-
-            # anchored keypoint always wins ties deterministically.
-            order = []
-            for name in FIELD_KEYPOINTS:
-                if name not in adapted_predetermined:
-                    continue
-                pred_px = adapted_predetermined[name]
-                anchor = np.array(pred_px, dtype=np.float32)
-                dists = np.linalg.norm(candidates_arr - anchor, axis=1)
-                nearby = np.where(dists < proximity_px)[0]
-                if not len(nearby):
-                    continue
-                best_idx = int(nearby[np.argmin(dists[nearby])])
-                best_dist = float(dists[best_idx])
-                order.append((best_dist, name, best_idx, pred_px))
+        for coeff in RADIUS_STEPS:
+            proximity_px = diag * coeff
+            claimed: dict[int, tuple[float, str]] = {}
+            assignments: dict[str, tuple[tuple[float, float], float]] = {}
 
-            order.sort(key=lambda x: x[0])  # closest pair wins first
+            if candidates_arr is not None:
+                order = []
+                for name in FIELD_KEYPOINTS:
+                    if name not in adapted_predetermined:
+                        continue
 
-            for best_dist, name, best_idx, pred_px in order:
-                if best_idx in claimed:
-                    # already taken by a closer keypoint — fall through to
-                    # predetermined fallback (handled in pass 2)
-                    continue
-                claimed[best_idx] = (best_dist, name)
-                conf = 1.0 - best_dist / proximity_px
-                assignments[name] = (tuple(candidates_arr[best_idx]), conf)
+                    pred_px = adapted_predetermined[name]
+                    pred_x, pred_y = pred_px
 
-        # Pass 2: build the DetectedKeypoint list
+                    near_edge = (
+                        pred_x < 20
+                        or pred_x > frame_w - 20
+                        or pred_y < 20
+                        or pred_y > frame_h - 20
+                    )
+                    if near_edge:
+                        continue
+
+                    anchor = np.array(pred_px, dtype=np.float32)
+                    dists = np.linalg.norm(candidates_arr - anchor, axis=1)
+                    nearby = np.where(dists < proximity_px)[0]
+                    if not len(nearby):
+                        continue
+
+                    best_idx = int(nearby[np.argmin(dists[nearby])])
+                    best_dist = float(dists[best_idx])
+                    order.append((best_dist, name, best_idx, pred_px))
+
+                order.sort(key=lambda x: x[0])
+
+                for best_dist, name, best_idx, pred_px in order:
+                    if best_idx in claimed:
+                        continue
+                    claimed[best_idx] = (best_dist, name)
+                    conf = 1.0 - best_dist / proximity_px
+                    assignments[name] = (tuple(candidates_arr[best_idx]), conf)
+
+            detected_count = len(assignments)
+            logfire.debug(
+                f"[Homography] proximity_px={proximity_px:.1f} (coeff={coeff}): "
+                f"{detected_count} detected matches"
+            )
+
+            best_assignments = assignments
+
+            if detected_count >= MIN_DETECTED:
+                break
+
         keypoints: list[DetectedKeypoint] = []
 
         for name, field_pt in FIELD_KEYPOINTS.items():
-            if name in assignments:
-                image_pt, conf = assignments[name]
+            if name in best_assignments:
+                image_pt, conf = best_assignments[name]
                 source = "detected"
-            elif name in adapted_predetermined:
-                image_pt = adapted_predetermined[name]
-                conf = 0.3
-                source = "predetermined"
             else:
-                continue
+                if name not in adapted_predetermined:
+                    continue
+                image_pt = adapted_predetermined[name]
+                conf = 0.25
+                source = "predetermined"
 
             keypoints.append(
                 DetectedKeypoint(
@@ -259,9 +242,29 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
                 )
             )
 
+        if len(keypoints) < 4:
+            existing = {kp.name for kp in keypoints}
+            for name, field_pt in FIELD_KEYPOINTS.items():
+                if name in existing or name not in adapted_predetermined:
+                    continue
+                image_pt = adapted_predetermined[name]
+                keypoints.append(
+                    DetectedKeypoint(
+                        homography_result_id=result_id,
+                        name=name,
+                        image_pt_x=float(image_pt[0]),
+                        image_pt_y=float(image_pt[1]),
+                        field_pt_x=float(field_pt[0]),
+                        field_pt_y=float(field_pt[1]),
+                        source="predetermined",
+                        confidence=0.2,
+                    )
+                )
+                if len(keypoints) >= 4:
+                    break
+
         return keypoints
 
-    
     def validate_homography(self, H: np.ndarray) -> bool:
         frame_w, frame_h = self.reference_frame_size
         if H is None or np.isnan(H).any() or np.isinf(H).any():
@@ -291,18 +294,21 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
     def clear_cache(self) -> None:
         self._cached_H = None
 
-
     def project_batch(
         self,
         bboxes: list[tuple[float, float, float, float]],
         H: Optional[np.ndarray] = None,
         use_feet: bool = True,
     ) -> list[Optional[tuple[float, float]]]:
-        H_mat = H or (
-            self._last_result.H
-            if self._last_result and self._last_result.is_valid
-            else self._cached_H
-        )
+        if H is not None:
+            H_mat = H
+        elif self._last_result is not None and self._last_result.is_valid:
+            H_mat = self._last_result.H
+        elif self._cached_H is not None:
+            H_mat = self._cached_H
+        else:
+            H_mat = None
+
         if H_mat is None or not bboxes:
             return [None] * len(bboxes)
 
@@ -327,7 +333,6 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
             else:
                 results.append(None)
         return results
-
 
     def draw_debug(
         self,

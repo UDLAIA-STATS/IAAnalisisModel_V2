@@ -1,21 +1,15 @@
 import csv
 from pathlib import Path
 from typing import List, Tuple
-import uuid
 
 import logfire
-from matplotlib import ticker
-import pandas as pd
-import matplotlib.pyplot as plt
 
-from pydantic import BaseModel
 from sqlmodel import Session
 
 from src.entities.reporter.diagrams_generator import DiagramsGenerator
 from src.core.reporter.detections_reporter import ReportRow
 from src.core.repository.homography_repository import HomographyRepository
 from src.entities.types.bucket_types import FilePurposeTypes
-from src.config.routes import DETECTED_OBJECTS_METRICS_DIR, DIAGRAMS_DIR
 from src.core.repository.ball_repository import BallRepository
 from src.core.repository.goal_repository import GoalRepository
 from src.core.repository.player_repository import PlayerRepository

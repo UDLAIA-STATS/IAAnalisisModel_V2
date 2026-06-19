@@ -1,25 +1,12 @@
-import csv
-from pathlib import Path
-from typing import List, Tuple
+from typing import List
 import uuid
 
-import logfire
-from matplotlib import ticker
-import pandas as pd
-import matplotlib.pyplot as plt
 
-from pydantic import BaseModel
 from sqlmodel import Session
 
-from entities.models.app.report_models import ReportRow
-from entities.reporter.detections_reporter_base import DetectionsReporterBase
-from src.core.repository.homography_repository import HomographyRepository
-from src.entities.types.bucket_types import FilePurposeTypes
-from src.config.routes import DETECTED_OBJECTS_METRICS_DIR, DIAGRAMS_DIR
-from src.core.repository.ball_repository import BallRepository
-from src.core.repository.goal_repository import GoalRepository
-from src.core.repository.player_repository import PlayerRepository
-from src.core.repository.r2_repository import files_repository
+from src.entities.models.app.report_models import ReportRow
+from src.entities.reporter.detections_reporter_base import DetectionsReporterBase
+from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
 
 
 class DetectionsReporter(DetectionsReporterBase):
@@ -44,7 +31,7 @@ class DetectionsReporter(DetectionsReporterBase):
         )
 
         reports = [
-            {"report_detections", report_path.as_posix()},
+            ("report_detections", report_path.as_posix()),
             ("class_chart", class_chart_str),
             ("time_chart", time_chart_str),
             ("dynamics_chart", dynamics_chart_str),

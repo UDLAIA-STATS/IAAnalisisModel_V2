@@ -58,6 +58,9 @@ class CleanHomographyFrame:
     frame_num: int
     H: np.ndarray
     reprojection_error: float
+    inlier_count: int
     total_kpts: int
     detected_kpts: int
+    predetermined_kpts: int
+    avg_conf: Optional[float]
     avg_det_conf: Optional[float]

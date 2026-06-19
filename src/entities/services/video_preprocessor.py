@@ -28,6 +28,10 @@ class VideoPreprocessor:
         self.resize_h = 370
         self.resized = False
 
+    def set_fps(self, fps: float):
+        self.fps = fps
+        self.n_samples = max(6, int(fps * 0.45))
+
     def compress_frame(self, frame: MatLike) -> MatLike:
         if self.resized:
             return cv2.resize(frame, (self.resize_w, self.resize_h), interpolation=cv2.INTER_AREA)
@@ -57,7 +61,7 @@ class VideoPreprocessor:
         logfire.debug(f"[VideoProcessor] Histogram distance: {dist:.4f}")
         return dist
 
-    def add_frame(self, frame: MatLike, timestamp: float, frame_num: int) -> List[VideoItem]:
+    def add_frame(self, frame: MatLike, timestamp: float, frame_num: int) -> List[VideoItem]:        
         small = self.compress_frame(frame)
         delta = self.histogram_delta(small)
 

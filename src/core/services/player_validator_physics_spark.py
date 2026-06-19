@@ -257,11 +257,6 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
             uf.union(correct_id, below_id)
             merged_below.add(below_id)
 
-            logfire.info(
-                f"[PlayerPhysicalValidator] Scheduling merge "
-                f"{below_id} → {correct_id} (score={score:.3f})"
-            )
-
         groups = uf.groups()
         total_merged = 0
 

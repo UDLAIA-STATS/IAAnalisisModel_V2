@@ -13,7 +13,7 @@ from src.entities.models.soccer.player_model import PlayerState
 class PhysicsCalculatorBase:
     MAX_SPEED = 14.0
     MAX_ACCELERATION = 12.0
-    MAX_FRAME_GAP = 40
+    MAX_FRAME_GAP = 10
     SPEED_SMOOTHING = 0.15
     
     def calculate_distance(
@@ -40,8 +40,7 @@ class PhysicsCalculatorBase:
             vf = (
                 self.SPEED_SMOOTHING * vf + (1 - self.SPEED_SMOOTHING) * prev_speed
             )
-
-            speed_ms = float(np.linalg.norm(vf) * 3.6)
+            speed_ms = float(np.linalg.norm(vf))
 
         acceleration_ms = float(np.linalg.norm(acceleration))
 

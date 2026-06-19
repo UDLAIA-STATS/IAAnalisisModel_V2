@@ -31,7 +31,7 @@ class VideoManagerBase(ABC):
         h, w = first_frame.shape[:2]
         self.writing_width = w
         self.writing_height = h
-        self.preprocessor = VideoPreprocessor(match_id=match_id, n_samples=5)
+        self.preprocessor = VideoPreprocessor(match_id=match_id)
 
         self.writer = cv2.VideoWriter(
             self.output_video.as_posix(),
