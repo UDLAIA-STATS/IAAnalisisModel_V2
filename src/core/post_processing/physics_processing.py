@@ -3,11 +3,8 @@ import numpy as np
 from sqlmodel import Session
 
 from src.core.vision.homography_interpolator import HomographyInterpolator
-from src.core.repository.depth_history_repository import DepthRepository
 from src.entities.services.physics_processing_base import PhysicsCalculatorBase
 from src.core.repository.player_states_repository import PlayerStatesRepository
-from src.core.vision.pixels_converter import pixel_conversion_handler
-from src.core.repository.homography_repository import HomographyRepository
 
 
 class PhysicsProcessing(PhysicsCalculatorBase):

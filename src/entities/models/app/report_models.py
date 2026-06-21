@@ -2,6 +2,7 @@ from pydantic import BaseModel
 
 
 class ReportRow(BaseModel):
+    id: int
     frame_number: int
     object_type: str
     track_id: int

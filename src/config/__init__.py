@@ -31,4 +31,7 @@ from .routes import (
     validate_model as validate_model,
     OUTPUT_VIDEOS_DIR as OUTPUT_VIDEOS_DIR,
     OUTPUTS_DIR as OUTPUTS_DIR,
+    TIME_REPORTS_DIR as TIME_REPORTS_DIR,
+    DIAGRAMS_DIR as DIAGRAMS_DIR,
+    OUTPUT_DIAGRAMS as OUTPUT_DIAGRAMS
 )

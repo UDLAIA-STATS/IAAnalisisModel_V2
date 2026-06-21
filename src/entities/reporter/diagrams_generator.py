@@ -7,7 +7,6 @@ import pandas as pd
 
 from src.config.routes import DIAGRAMS_DIR
 
-
 class DiagramsGenerator:
     _TRACK_COLORS = [
         "#4C72B0",  # blue
@@ -26,57 +25,23 @@ class DiagramsGenerator:
         """
         Generates:
         1. Detection count by object class (ball, player, goal)
-        2. Detections over time (by timestamp)
+        2. Detections over time (by timestamp) — EXCLUDES homography
         3. Player dynamics: speed, distance, acceleration per track_id
-        4. Player position heatmap based on detected bbox centers
+        4. Player position heatmap based on dx_meters/dy_meters (meter-scale)
         """
 
         df = pd.read_csv(report_path)
         parent_dir = DIAGRAMS_DIR / str(match_id)
         parent_dir.mkdir(exist_ok=True, parents=True)
+        stem = report_path.stem
 
         if df.empty:
             logfire.warning("[DetectionsReporter] Report is empty, skipping diagrams")
             return "", "", "", ""
 
-        class_counts = df.groupby("object_type").size().sort_values(ascending=False)
+        class_chart = self._generate_class_counts_chart(df, parent_dir, stem)
 
-        fig, ax = self._generate_plot(
-            (8, 5),
-            "Detection count by object class",
-            "Object type",
-            "Detection count",
-        )
-        class_counts.plot(kind="bar", ax=ax, color=["#4C72B0", "#DD8452", "#55A868"])
-        ax.tick_params(axis="x", rotation=0)
-        plt.tight_layout()
-
-        class_chart = parent_dir / f"detections_by_class_{report_path.stem}.png"
-        plt.savefig(class_chart)
-        plt.close(fig)
-
-        df_sorted = df.sort_values("timestamp")
-        df_sorted["timestamp_bin"] = pd.cut(df_sorted["timestamp"], bins=30)
-        time_counts = (
-            df_sorted.groupby(["timestamp_bin", "object_type"], observed=True)
-            .size()
-            .unstack(fill_value=0)
-        )
-
-        fig, ax = self._generate_plot(
-            (12, 5),
-            "Detections over time",
-            "Timestamp",
-            "Detection count",
-        )
-        time_counts.plot(kind="area", ax=ax, alpha=0.6, stacked=True)
-        ax.set_xticks([])
-        ax.legend(title="Object type")
-        plt.tight_layout()
-
-        time_chart = parent_dir / f"detections_over_time_{report_path.stem}.png"
-        plt.savefig(time_chart)
-        plt.close(fig)
+        time_chart = self._generate_detections_over_time_chart(df, parent_dir, stem)
 
         players_df = df[df["object_type"] == "player"].copy()
 
@@ -85,10 +50,122 @@ class DiagramsGenerator:
             dynamics_chart = ""
             heatmap_chart = ""
         else:
+            dynamics_chart = self._generate_player_dynamics_chart(
+                players_df, parent_dir, stem
+            )
+
+            heatmap_chart = self._generate_heatmap_meters(
+                players_df, parent_dir, stem
+            )
+
+        return (
+            class_chart.as_posix() if class_chart else "",
+            time_chart.as_posix() if time_chart else "",
+            dynamics_chart.as_posix() if dynamics_chart else "",
+            heatmap_chart.as_posix() if heatmap_chart else "",
+        )
+
+
+    def _generate_class_counts_chart(
+        self, df: pd.DataFrame, parent_dir: Path, stem: str
+    ) -> Path | None:
+        """
+        Bar chart: detection count grouped by object_type.
+        Includes all object types present in the report.
+        """
+        try:
+            class_counts = (
+                df.groupby("object_type").size().sort_values(ascending=False)
+            )
+
+            fig, ax = self._generate_plot(
+                (8, 5),
+                "Detection count by object class",
+                "Object type",
+                "Detection count",
+            )
+            class_counts.plot(
+                kind="bar",
+                ax=ax,
+                color=["#4C72B0", "#DD8452", "#55A868", "#C44E52"],
+            )
+            ax.tick_params(axis="x", rotation=0)
+            plt.tight_layout()
+
+            out_path = parent_dir / f"detections_by_class_{stem}.png"
+            plt.savefig(out_path)
+            plt.close(fig)
+
+            logfire.info(
+                f"[DiagramsGenerator] Saved class counts: {out_path.as_posix()}"
+            )
+            return out_path
+
+        except Exception as e:
+            logfire.error(f"[DiagramsGenerator] Error in class counts chart: {e}")
+            return None
+
+    def _generate_detections_over_time_chart(
+        self, df: pd.DataFrame, parent_dir: Path, stem: str
+    ) -> Path | None:
+        """
+        Stacked area chart: detections over time by object_type.
+        EXCLUDES "homography" rows — only ball, player, goal, etc.
+        """
+        try:
+            df_no_homography = df[df["object_type"] != "homography"].copy()
+
+            if df_no_homography.empty:
+                logfire.warning(
+                    "[DiagramsGenerator] No non-homography data for time chart"
+                )
+                return None
+
+            df_sorted = df_no_homography.sort_values("timestamp")
+            df_sorted["timestamp_bin"] = pd.cut(df_sorted["timestamp"], bins=30)
+            time_counts = (
+                df_sorted.groupby(["timestamp_bin", "object_type"], observed=True)
+                .size()
+                .unstack(fill_value=0)
+            )
+
+            fig, ax = self._generate_plot(
+                (12, 5),
+                "Detections over time",
+                "Timestamp",
+                "Detection count",
+            )
+            time_counts.plot(kind="area", ax=ax, alpha=0.6, stacked=True)
+            ax.set_xticks([])
+            ax.legend(title="Object type")
+            plt.tight_layout()
+
+            out_path = parent_dir / f"detections_over_time_{stem}.png"
+            plt.savefig(out_path)
+            plt.close(fig)
+
+            logfire.info(
+                f"[DiagramsGenerator] Saved detections over time: {out_path.as_posix()}"
+            )
+            return out_path
+
+        except Exception as e:
+            logfire.error(
+                f"[DiagramsGenerator] Error in detections over time chart: {e}"
+            )
+            return None
+
+    def _generate_player_dynamics_chart(
+        self, players_df: pd.DataFrame, parent_dir: Path, stem: str
+    ) -> Path | None:
+        """
+        3-panel bar chart: avg speed, distance, acceleration per track_id.
+        """
+        try:
             player_dynamics = (
                 players_df.groupby("track_id")[
                     ["speed", "distance", "acceleration"]
-                ]  # NOTE: "acceleration" must be added to ReportRow and CSV if not already present
+                ]
                 .mean()
                 .sort_values("speed", ascending=False)
             )
@@ -115,28 +192,64 @@ class DiagramsGenerator:
             plt.suptitle("Player dynamics by track ID", fontsize=13, y=1.02)
             plt.tight_layout()
 
-            dynamics_chart = parent_dir / f"player_dynamics_{report_path.stem}.png"
-            plt.savefig(dynamics_chart)
+            out_path = parent_dir / f"player_dynamics_{stem}.png"
+            plt.savefig(out_path)
             plt.close(fig)
 
-            bbox_values = players_df["bbox"].str.split(", ", expand=True).astype(float)
-            players_df = players_df.copy()
-            players_df["center_x"] = (bbox_values[0] + bbox_values[2]) / 2
-            players_df["center_y"] = (bbox_values[1] + bbox_values[3]) / 2
+            logfire.info(
+                f"[DiagramsGenerator] Saved player dynamics: {out_path.as_posix()}"
+            )
+            return out_path
 
-            fig, ax = self._generate_plot((10, 10), "Player position heatmap", "X position (px)", "Y position (px)")
+        except Exception as e:
+            logfire.error(
+                f"[DiagramsGenerator] Error in player dynamics chart: {e}"
+            )
+            return None
+
+    def _generate_heatmap_meters(
+        self, players_df: pd.DataFrame, parent_dir: Path, stem: str
+    ) -> Path | None:
+        """
+        Hexbin heatmap of player positions using dx_meters and dy_meters
+        for real-world meter-scale spatial analysis.
+        """
+        try:
+            players_df["dx_meters"] = pd.to_numeric(
+                players_df["dx_meters"], errors="coerce"
+            )
+            players_df["dy_meters"] = pd.to_numeric(
+                players_df["dy_meters"], errors="coerce"
+            )
+
+            valid_data = players_df.dropna(subset=["dx_meters", "dy_meters"])
+
+            if valid_data.empty:
+                logfire.warning(
+                    "[DiagramsGenerator] No valid dx_meters/dy_meters for heatmap"
+                )
+                return None
+
+            fig, ax = self._generate_plot(
+                (10, 10),
+                "Player Position Heatmap (Meters)",
+                "X Position (meters)",
+                "Y Position (meters)",
+            )
 
             ax.set_facecolor("#4a7c2f")
             ax.set_xlim(
-                players_df["center_x"].min() - 10, players_df["center_x"].max() + 10
+                valid_data["dx_meters"].min() - 2,
+                valid_data["dx_meters"].max() + 2,
             )
             ax.set_ylim(
-                players_df["center_y"].min() - 10, players_df["center_y"].max() + 10
+                valid_data["dy_meters"].min() - 2,
+                valid_data["dy_meters"].max() + 2,
             )
 
             hb = ax.hexbin(
-                players_df["center_x"],
-                players_df["center_y"],
+                valid_data["dx_meters"],
+                valid_data["dy_meters"],
                 gridsize=30,
                 cmap="YlOrRd",
                 alpha=0.75,
@@ -147,19 +260,19 @@ class DiagramsGenerator:
             ax.invert_yaxis()
             plt.tight_layout()
 
-            heatmap_chart = parent_dir / f"player_heatmap_{report_path.stem}.png"
-            plt.savefig(heatmap_chart)
+            out_path = parent_dir / f"player_heatmap_meters_{stem}.png"
+            plt.savefig(out_path)
             plt.close(fig)
 
-            dynamics_chart = dynamics_chart.as_posix()
-            heatmap_chart = heatmap_chart.as_posix()
+            logfire.info(
+                f"[DiagramsGenerator] Saved heatmap (meters): {out_path.as_posix()}"
+            )
+            return out_path
 
-        return (
-            class_chart.as_posix(),
-            time_chart.as_posix(),
-            dynamics_chart,
-            heatmap_chart,
-        )
+        except Exception as e:
+            logfire.error(f"[DiagramsGenerator] Error in heatmap (meters): {e}")
+            return None
+
 
     def _generate_plot(
         self,

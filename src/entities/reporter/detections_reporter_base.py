@@ -20,7 +20,7 @@ class DetectionsReporterBase(DiagramsGenerator):
 
     def generate_report(
         self, match_id: int, session: Session
-    ) -> Tuple[str, str, str, str, str, str, str]:
+    ) -> Tuple:
         raise NotImplementedError
 
     def upload_reports(self, reports: list[tuple[str, str]], match_id: int):
@@ -28,15 +28,19 @@ class DetectionsReporterBase(DiagramsGenerator):
         for name, path_str in reports:
             if path_str:
                 p = Path(path_str)
-                key = files_repository.generate_key(
-                    match_id, p.stem, FilePurposeTypes.REPORTS, p.suffix[1:]
-                )
-                files_repository.upload_report(key, p)
+                key = self.upload_report(p, match_id)
                 chart_keys[name] = key
             else:
                 chart_keys[name] = None
 
         return chart_keys
+
+    def upload_report(self, report_path: Path, match_id: int, purpose_type=FilePurposeTypes.REPORTS):
+        key = files_repository.generate_key(
+            match_id, report_path.stem, purpose_type, report_path.suffix[1:]
+        )
+        files_repository.upload_report(key, report_path)
+        return key
 
     def get_report_rows(self, match_id: int, session: Session):
         report_rows: List[ReportRow] = []
@@ -54,6 +58,7 @@ class DetectionsReporterBase(DiagramsGenerator):
 
             csv_writer.writerow(
                 [
+                    "id",
                     "frame_number",
                     "object_type",
                     "track_id",
@@ -74,6 +79,7 @@ class DetectionsReporterBase(DiagramsGenerator):
             for row in report_rows:
                 csv_writer.writerow(
                     [
+                        row.id,
                         row.frame_number,
                         row.object_type,
                         row.track_id,
@@ -102,6 +108,7 @@ class DetectionsReporterBase(DiagramsGenerator):
         for homography in homographies:
             report_rows.append(
                 ReportRow(
+                    id=homography.id,
                     frame_number=homography.frame_num,
                     object_type="homography",
                     track_id=0,
@@ -122,6 +129,7 @@ class DetectionsReporterBase(DiagramsGenerator):
             bbox = f"{ball.x1}, {ball.y1}, {ball.x2}, {ball.y2}"
             report_rows.append(
                 ReportRow(
+                    id=ball.id,
                     frame_number=ball.frame_number,
                     object_type="ball",
                     track_id=0,
@@ -144,6 +152,7 @@ class DetectionsReporterBase(DiagramsGenerator):
                 bbox = f"{state.x1}, {state.y1}, {state.x2}, {state.y2}"
                 report_rows.append(
                     ReportRow(
+                        id=state.id,
                         frame_number=state.frame_number,
                         object_type="player",
                         track_id=player.track_id,
@@ -175,6 +184,7 @@ class DetectionsReporterBase(DiagramsGenerator):
             bbox = f"{goal.x1}, {goal.y1}, {goal.x2}, {goal.y2}"
             report_rows.append(
                 ReportRow(
+                    id=goal.id,
                     frame_number=goal.frame_number,
                     object_type="goal",
                     track_id=0,

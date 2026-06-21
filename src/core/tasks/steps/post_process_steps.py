@@ -8,6 +8,9 @@ from src.core.post_processing.physics_processing import physics_procesor
 from src.entities.types.states import StatesModel
 from src.core.services.player_validator_physics_spark import physical_validator
 from src.core.repository.player_states_repository import PlayerStatesRepository
+from src.core.post_processing.ball_predictor import ball_predictor_cls
+from src.core.post_processing.goal_predictor import goal_validator_cls
+
 
 import traceback
 
@@ -35,6 +38,8 @@ class ValidationProcess:
             player_validator_cls.validate(request.match_id, total_frames, session)
             physics_procesor.process(request.match_id, fps, session)
             needs_restart = physical_validator.validate(request.match_id, session)
+            ball_predictor_cls.predict(request.match_id, total_frames, session)
+            goal_validator_cls.validate(request.match_id, session)
 
             if needs_restart:
                 PlayerStatesRepository.recalculate_physics(request.match_id, session)                

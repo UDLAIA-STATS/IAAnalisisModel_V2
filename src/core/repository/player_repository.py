@@ -51,3 +51,13 @@ class PlayerRepository:
         session.commit()
 
     
+    @staticmethod
+    def upload_heatmap(player_id: int, heatmap_url: str, session: Session) -> None:
+        player = session.get(PlayerModel, player_id)
+        if not player:
+            return
+
+        player.heatmap_path = heatmap_url
+
+        session.add(player)
+        session.flush()

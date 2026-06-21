@@ -14,6 +14,7 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     goals: int = Field(default=0)  # Goles del jugador
     shirt_number: int = Field(nullable=True, default=None)
     crop_path: str = Field(nullable=True, default=None)
+    heatmap_path: str = Field(nullable=True, default=None)
 
     states: list["PlayerState"] = Relationship(back_populates="player", cascade_delete=True)
     numbers: list["PlayerNumbers"] = Relationship(back_populates="player", cascade_delete=True)
@@ -49,6 +50,11 @@ class DepthHistory(NumericIdModel, AuditTable, table=True):
         default=1.0,
         decimal_places=6,
         description="Escala de la camara (nivel de zoom o aumento focal)",
+    )
+    camera_tilt: float = Field(
+        default=0.0,
+        decimal_places=6,
+        description="Inclinacion de la camara en grados",
     )
     player_id: int = Field(
         foreign_key="players.id",
