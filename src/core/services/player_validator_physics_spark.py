@@ -4,11 +4,14 @@ from collections import defaultdict
 
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import (
+    broadcast,
     col,
     greatest,
     least,
     lit,
+    struct,
     when,
+    min as sql_min,
     abs as sql_abs,
 )
 from pyspark.sql.types import FloatType, IntegerType, StructType, StructField
@@ -60,56 +63,64 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
         limit = PlayerStatesRepository.get_max_aparitions(match_id, session)
         logfire.info(f"[PlayerPhysicalValidator] Appearance threshold = {limit}")
 
-        below_states, correct_states = PlayerStatesRepository.get_states_appearances(
+        bellow_states, correct_states = PlayerStatesRepository.get_states_appearances(
             match_id=match_id,
             limit_appearance=limit,
             session=session,
         )
 
-        if not below_states or not correct_states:
+        if not bellow_states or not correct_states:
             logfire.info("[PlayerPhysicalValidator] Nothing to validate")
             return False
 
-        below_summaries = self._build_motion_summaries(below_states)
+        bellow_summaries = self._build_motion_summaries(bellow_states)
         correct_summaries = self._build_motion_summaries(correct_states)
 
         logfire.info(
-            f"[PlayerPhysicalValidator] below={len(below_summaries)} "
+            f"[PlayerPhysicalValidator] below={len(bellow_summaries)} "
             f"correct={len(correct_summaries)}"
         )
 
-        # ── convert to Spark DataFrames for cross-join and filtering ───────
-        below_df = self._summaries_to_dataframe(below_summaries, "below")
+        bellow_df = self._summaries_to_dataframe(bellow_summaries, "below")
         correct_df = self._summaries_to_dataframe(correct_summaries, "correct")
 
-        below_df = (
-            below_df.withColumnRenamed("early_cx", "below_early_cx")
-            .withColumnRenamed("early_cy", "below_early_cy")
-            .withColumnRenamed("late_cx", "below_late_cx")
-            .withColumnRenamed("late_cy", "below_late_cy")
+        bellow_df.cache()
+        correct_df.cache()
+
+        candidates_df = bellow_df.join(
+            broadcast(correct_df),
+            (col("below_timestamp_end") <= col("correct_timestamp_start"))
+            | (col("below_timestamp_start") >= col("correct_timestamp_end")),
+            how="inner",
         )
 
-        correct_df = (
-            correct_df.withColumnRenamed("early_cx", "correct_early_cx")
-            .withColumnRenamed("early_cy", "correct_early_cy")
-            .withColumnRenamed("late_cx", "correct_late_cx")
-            .withColumnRenamed("late_cy", "correct_late_cy")
+        candidates_df = candidates_df.withColumn(
+            "timestamp_gap",
+            when(
+                col("below_timestamp_end") <= col("correct_timestamp_start"),
+                col("correct_timestamp_start") - col("below_timestamp_end"),
+            ).otherwise(col("below_timestamp_start") - col("correct_timestamp_end")),
         )
 
-        below_df = below_df.withColumnRenamed("frame_gap", "below_frame_gap")
-        correct_df = correct_df.withColumnRenamed("frame_gap", "correct_frame_gap")
-
-        candidates_df = below_df.crossJoin(correct_df)
-
-        ts_gap = self._timestamp_gap_expr(
-            col("below_timestamp_end"),
-            col("below_timestamp_start"),
-            col("correct_timestamp_end"),
-            col("correct_timestamp_start"),
+        filtered = (
+            candidates_df.filter(col("timestamp_gap") <= self.MAX_TIMESTAMP_GAP_S)
+            .filter(
+                self._direction_delta_expr(
+                    col("below_mean_dx"),
+                    col("below_mean_dy"),
+                    col("correct_mean_dx"),
+                    col("correct_mean_dy"),
+                )
+                <= self.MAX_DIRECTION_ANGLE_DEG
+            )
+            .filter(
+                sql_abs(col("below_mean_speed_kmh") - col("correct_mean_speed_kmh"))
+                <= self.MAX_SPEED_DELTA_KMH
+            )
         )
 
-        candidates_df = (
-            candidates_df.withColumn(
+        filtered = (
+            filtered.withColumn(
                 "early_x1",
                 when(
                     col("below_timestamp_end") <= col("correct_timestamp_start"),
@@ -167,40 +178,6 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
             )
         )
 
-        filtered = (
-            candidates_df.filter(
-                ~self._has_temporal_overlap_expr(
-                    col("below_frame_start"),
-                    col("below_frame_end"),
-                    col("correct_frame_start"),
-                    col("correct_frame_end"),
-                )
-            )
-            .filter(
-                self._timestamp_gap_expr(
-                    col("below_timestamp_end"),
-                    col("below_timestamp_start"),
-                    col("correct_timestamp_end"),
-                    col("correct_timestamp_start"),
-                )
-                <= self.MAX_TIMESTAMP_GAP_S
-            )
-            .filter(
-                self._direction_delta_expr(
-                    col("below_mean_dx"),
-                    col("below_mean_dy"),
-                    col("correct_mean_dx"),
-                    col("correct_mean_dy"),
-                )
-                <= self.MAX_DIRECTION_ANGLE_DEG
-            )
-            .filter(
-                sql_abs(col("below_mean_speed_kmh") - col("correct_mean_speed_kmh"))
-                <= self.MAX_SPEED_DELTA_KMH
-            )
-        )
-
-        # Calculate composite scores
         scored = (
             filtered.withColumn(
                 "score",
@@ -224,25 +201,33 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
                     sql_abs(
                         col("below_mean_speed_kmh") - col("correct_mean_speed_kmh")
                     ),
-                    self._timestamp_gap_expr(
-                        col("below_timestamp_end"),
-                        col("below_timestamp_start"),
-                        col("correct_timestamp_end"),
-                        col("correct_timestamp_start"),
-                    ),
+                    col("timestamp_gap"),
                 ),
             )
             .orderBy("score")
             .select(col("score"), col("below_player_id"), col("correct_player_id"))
         )
 
+        scored_filtered = scored.filter(col("score") <= self.MERGE_SCORE_THRESHOLD)
+        best_candidates_df = (
+            scored_filtered.groupBy("below_player_id")
+            .agg(sql_min(struct("score", "correct_player_id")).alias("best"))
+            .select(
+                col("below_player_id"),
+                col("best.score").alias("best_score"),
+                col("best.correct_player_id").alias("best_correct_id"),
+            )
+        )
+
         scored_list = [
-            (row.score, row.below_player_id, row.correct_player_id)
-            for row in scored.collect()
+            (row.best_score, row.below_player_id, row.best_correct_id)
+            for row in best_candidates_df.collect()
         ]
 
         if not scored_list:
             logfire.info("[PlayerPhysicalValidator] No valid candidates found")
+            bellow_df.unpersist()
+            correct_df.unpersist()
             return False
 
         uf = UnionFind()
@@ -268,6 +253,8 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
                 total_merged += 1
 
         if total_merged == 0:
+            bellow_df.unpersist()
+            correct_df.unpersist()
             return False
 
         session.commit()
@@ -277,21 +264,25 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
             f"Merged {total_merged} tracks across {len(groups)} groups."
         )
 
-        below_states, _ = PlayerStatesRepository.get_states_appearances(
+        bellow_states, _ = PlayerStatesRepository.get_states_appearances(
             match_id=match_id,
             limit_appearance=limit,
             session=session,
         )
 
-        if not below_states:
+        if not bellow_states:
             logfire.info("[PlayerPhysicalValidator] Nothing to validate")
+            bellow_df.unpersist()
+            correct_df.unpersist()
             return True
 
-        player_ids = self._get_ghost_player_ids(below_states, appearance_threshold=160)
+        player_ids = self._get_ghost_player_ids(bellow_states, appearance_threshold=160)
 
         for player_id in player_ids:
             PlayerRepository.delete_player(player_id, session)
 
+        bellow_df.unpersist()
+        correct_df.unpersist()
         return True
 
     def _build_motion_summaries(
@@ -397,9 +388,9 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
         )
 
         return self.spark.createDataFrame(rows, schema=schema)
-    
+
     def _get_ghost_player_ids(
-    self, states: List[PlayerState], appearance_threshold: int = 160
+        self, states: List[PlayerState], appearance_threshold: int = 160
     ) -> Set[int]:
         """
         Return player_ids that are likely ghost/artifact tracks:
@@ -420,8 +411,7 @@ class PlayerPhysicalValidator(PlayerValidatorBase):
 
             # Condition A: every detection has zero movement
             has_any_movement = any(
-                (s.dx is not None and s.dx != 0.0)
-                or (s.dy is not None and s.dy != 0.0)
+                (s.dx is not None and s.dx != 0.0) or (s.dy is not None and s.dy != 0.0)
                 for s in detections
             )
             if not has_any_movement:

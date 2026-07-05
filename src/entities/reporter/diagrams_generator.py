@@ -7,7 +7,7 @@ import pandas as pd
 
 from src.config.routes import DIAGRAMS_DIR
 
-class DiagramsGenerator:
+class DiagramsGeneratorBase:
     _TRACK_COLORS = [
         "#4C72B0",  # blue
         "#DD8452",  # orange
@@ -167,7 +167,7 @@ class DiagramsGenerator:
                     ["speed", "distance", "acceleration"]
                 ]
                 .mean()
-                .sort_values("speed", ascending=False)
+                .sort_values("track_id", ascending=True)
             )
 
             fig, axes = plt.subplots(1, 3, figsize=(15, 5))

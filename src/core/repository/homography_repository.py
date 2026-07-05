@@ -71,7 +71,6 @@ class HomographyRepository:
         aggregation counts remain correct.
         """
 
-        # ── aggregate expressions ────────────────────────────────────────────────
         total_kpts = func.count(col(DetectedKeypoint.id)).label("total_kpts")
 
         detected_kpts = func.count(

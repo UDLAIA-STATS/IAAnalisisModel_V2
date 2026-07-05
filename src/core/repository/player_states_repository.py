@@ -203,20 +203,3 @@ class PlayerStatesRepository:
 
         return list(below_states), list(correct_states)
 
-    @staticmethod
-    def recalculate_physics(match_id: int, session: Session):
-        states = session.exec(
-            select(PlayerState)
-            .join(
-                target=PlayerModel,
-                onclause=col(PlayerState.player_id) == col(PlayerModel.id),
-                full=True,
-            )
-            .where(PlayerModel.match_id == match_id)
-            .order_by(col(PlayerState.frame_number))
-        ).all()
-
-        for state in states:
-            state.recalculate_physics()
-            session.add(state)
-            session.flush()

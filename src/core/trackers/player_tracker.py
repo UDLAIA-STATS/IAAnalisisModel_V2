@@ -40,8 +40,9 @@ class PlayerTracker(DetectorBase):
             tracker=self.tracker_config_file,
             persist=True,
             conf=0.15,
-            iou=0.55,
+            iou=0.6,
             verbose=False,
+            imgsz=1536,
             device=self.device,
         )
 

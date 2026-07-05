@@ -76,7 +76,6 @@ class PitchHomography(HomographyBase):
 
         segments = self._merge_segments(segments)
         clusters = self._cluster_lines(segments)
-        logfire.info(f"[Homography] Line clusters detected: {len(clusters)}, segments detected: {len(segments)}")
 
         homography = HomographyResult(
             reprojection_error=float("inf"),
@@ -90,7 +89,6 @@ class PitchHomography(HomographyBase):
 
         candidate_image_pts = self._segments_to_candidates(clusters, w, h)
         candidate_image_pts = self._cluster_intersections(candidate_image_pts)
-        logfire.info(f"[Homography] Candidate points detected: {len(candidate_image_pts)}")
 
         adapted_points = self._transform_predetermined_points(
             w, h, camera_scale, camera_tilt
@@ -105,8 +103,6 @@ class PitchHomography(HomographyBase):
             keypoints
         )
 
-        logfire.info(f"[Homography] Adapted points detected: {len(keypoints)}: {adapted_points}")
-        logfire.info(f"[Homography] Keypoints detectted: {len(keypoints)}, first 5: {keypoints[:5]}")
 
 
         if len(keypoints) < self.min_keypoints:
@@ -130,7 +126,6 @@ class PitchHomography(HomographyBase):
         H, mask = cv2.findHomography(
             img_pts, fld_pts, cv2.RANSAC, self.ransac_threshold
         )
-        logfire.info(f"[Homography] Homography found: {H}m with mask: {mask}")
         if H is None:
             homography.H = np.eye(3)
             homography.inlier_count = 0
@@ -140,7 +135,6 @@ class PitchHomography(HomographyBase):
         inliers = int(mask.sum()) if mask is not None else 0
         repr_err = _reprojection_error(H, img_pts, fld_pts)
         geometry_ok = self.validate_homography(H)
-        logfire.info(f"[Homography] Found homography with {inliers} inliers and reprojection error of {repr_err}, geometry ok: {geometry_ok}")
 
         homography.H = H
         homography.reprojection_error = repr_err

@@ -2,7 +2,17 @@ from typing import Dict, Set
 import logfire
 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import col, greatest, least, abs as sql_abs
+from pyspark.sql.functions import (
+    broadcast,
+    col,
+    greatest,
+    least,
+    abs as sql_abs,
+    sqrt,
+    pow,
+    struct,
+    min as sql_min,
+)
 from pyspark.sql.types import (
     FloatType,
     IntegerType,
@@ -48,50 +58,50 @@ class PlayerValidator(PlayerValidatorBase):
             logfire.info("[PlayerValidator] No data to validate")
             return
 
-        correct_centroids = states_df.filter(col("tracker_id") <= 22)
-        incorrect_centroids = states_df.filter(col("tracker_id") > 22)
+        correct_centroids = states_df.filter(col("tracker_id") <= 22).cache()
+        incorrect_centroids = states_df.filter(col("tracker_id") > 22).cache()
 
         if correct_centroids.count() == 0 or incorrect_centroids.count() == 0:
             logfire.info("[PlayerValidator] No data to validate")
+            correct_centroids.unpersist()
+            incorrect_centroids.unpersist()
             return
 
-        correct_summaries = self._build_track_summaries(correct_centroids)
-        incorrect_summaries = self._build_track_summaries(incorrect_centroids)
+        correct_df = self._build_track_summaries(correct_centroids)
+        incorrect_df = self._build_track_summaries(incorrect_centroids)
 
-        ghost_ids: Set[int] = {
-            pid
-            for pid, s in incorrect_summaries.items()
-            if s.detection_count <= self.GHOST_TRACK_THRESHOLD
-        }
-
-        logfire.info(
-            f"[PlayerValidator] Correct tracks: {len(correct_summaries)} | "
-            f"Incorrect tracks: {len(incorrect_summaries)} | "
-            f"Ghost tracks: {ghost_ids}"
+        correct_df = correct_df.select(
+            [col(c).alias(f"correct_{c}") for c in correct_df.columns]
+        )
+        incorrect_df = incorrect_df.select(
+            [col(c).alias(f"incorrect_{c}") for c in incorrect_df.columns]
         )
 
-        correct_df = self._summaries_to_dataframe(correct_summaries, "correct")
-        incorrect_df = self._summaries_to_dataframe(incorrect_summaries, "incorrect")
+        correct_df.cache()
+        incorrect_df.cache()
+
+        ghost_ids_df = (
+            incorrect_df.filter(
+                col("incorrect_detection_count") <= self.GHOST_TRACK_THRESHOLD
+            )
+            .select("incorrect_player_id")
+            .distinct()
+        )
+        ghost_ids = set(
+            [int(row.incorrect_player_id) for row in ghost_ids_df.collect()]
+        )
+
+        logfire.info(
+            f"[PlayerValidator] Correct tracks: {correct_df.count()} | "
+            f"Incorrect tracks: {incorrect_df.count()} | "
+            f"Ghost tracks: {ghost_ids}"
+        )
 
         incorrect_df = incorrect_df.withColumn(
             "is_ghost", col("incorrect_player_id").isin(list(ghost_ids))
         )
 
-        # incorrect_df = (
-        #     incorrect_df.withColumnRenamed("early_cx", "incorrect_first_cx")
-        #     .withColumnRenamed("early_cy", "incorrect_first_cy")
-        #     .withColumnRenamed("late_cx", "incorrect_last_cx")
-        #     .withColumnRenamed("late_cy", "incorrect_last_cy")
-        # )
-
-        # correct_df = (
-        #     correct_df.withColumnRenamed("early_cx", "correct_first_cx")
-        #     .withColumnRenamed("early_cy", "correct_first_cy")
-        #     .withColumnRenamed("late_cx", "correct_last_cx")
-        #     .withColumnRenamed("late_cy", "correct_last_cy")
-        # )
-
-        candidates = incorrect_df.crossJoin(correct_df)
+        candidates = incorrect_df.crossJoin(broadcast(correct_df))
 
         candidates = candidates.withColumn(
             "frame_gap",
@@ -168,24 +178,38 @@ class PlayerValidator(PlayerValidatorBase):
                     col("correct_mid_cx"),
                     col("correct_mid_cy"),
                 ),
-                col("frame_gap")
+                col("frame_gap"),
             ),
         )
 
-        scored_list = [
-            (row.base_score, row.incorrect_player_id, row.correct_player_id)
-            for row in scored.orderBy("base_score").collect()
+        scored_filtered = scored.filter(col("base_score") <= self.MERGE_SCORE_THRESHOLD)
+        best_candidates_df = (
+            scored_filtered.groupBy("incorrect_player_id")
+            .agg(sql_min(struct("base_score", "correct_player_id")).alias("best"))
+            .select(
+                col("incorrect_player_id"),
+                col("best.base_score").alias("best_score"),
+                col("best.correct_player_id").alias("best_correct_id"),
+            )
+        )
+
+        best_candidates_list = [
+            (row.best_score, row.incorrect_player_id, row.best_correct_id)
+            for row in best_candidates_df.orderBy("best_score").collect()
         ]
 
-        if not scored_list:
-            logfire.info("[PlayerValidator] No valid candidates")
-            session.commit()
+        if not best_candidates_list:
+            logfire.info("[PlayerValidator] No valid candidates found")
+            correct_df.unpersist()
+            incorrect_df.unpersist()
+            correct_centroids.unpersist()
+            incorrect_centroids.unpersist()
             return
 
         uf = UnionFind()
         merged_incorrect: Set[int] = set()
 
-        for score, incorrect_id, correct_id in scored_list:
+        for score, incorrect_id, correct_id in best_candidates_list:
             if score > self.MERGE_SCORE_THRESHOLD:
                 break
             if incorrect_id in merged_incorrect:
@@ -210,6 +234,10 @@ class PlayerValidator(PlayerValidatorBase):
                 total_merged += 1
 
         session.commit()
+        correct_df.unpersist()
+        incorrect_df.unpersist()
+        correct_centroids.unpersist()
+        incorrect_centroids.unpersist()
 
         logfire.info(
             f"[PlayerValidator] Validation completed. "
@@ -222,78 +250,6 @@ class PlayerValidator(PlayerValidatorBase):
             "player_id", "tracker_id", "cx", "cy", "color", "confidence", "frame_number"
         )
 
-    def _summaries_to_dataframe(
-        self, summaries: Dict[int, TrackSummary], prefix: str
-    ) -> DataFrame:
-        """Convert summary dict to Spark DataFrame with early/late positions."""
-        rows = []
-        for player_id, summary in summaries.items():
-            rows.append(
-                {
-                    f"{prefix}_player_id": player_id,
-                    f"{prefix}_frame_start": summary.frame_start,
-                    f"{prefix}_frame_end": summary.frame_end,
-                    f"{prefix}_detection_count": summary.detection_count,
-                    f"{prefix}_avg_color": summary.avg_color,
-                    f"{prefix}_avg_width": summary.avg_width,
-                    f"{prefix}_avg_height": summary.avg_height,
-                    f"{prefix}_timestamp_start": summary.timestamp_start,
-                    f"{prefix}_timestamp_end": summary.timestamp_end,
-                    f"{prefix}_first_x1": summary.first_x1,
-                    f"{prefix}_first_y1": summary.first_y1,
-                    f"{prefix}_first_x2": summary.first_x2,
-                    f"{prefix}_first_y2": summary.first_y2,
-                    f"{prefix}_first_cx": summary.first_cx,
-                    f"{prefix}_first_cy": summary.first_cy,
-                    f"{prefix}_mid_x1": summary.mid_x1,
-                    f"{prefix}_mid_y1": summary.mid_y1,
-                    f"{prefix}_mid_x2": summary.mid_x2,
-                    f"{prefix}_mid_y2": summary.mid_y2,
-                    f"{prefix}_mid_cx": summary.mid_cx,
-                    f"{prefix}_mid_cy": summary.mid_cy,
-                    f"{prefix}_last_x1": summary.last_x1,
-                    f"{prefix}_last_y1": summary.last_y1,
-                    f"{prefix}_last_x2": summary.last_x2,
-                    f"{prefix}_last_y2": summary.last_y2,
-                    f"{prefix}_last_cx": summary.last_cx,
-                    f"{prefix}_last_cy": summary.last_cy,
-                }
-            )
-
-        schema = StructType(
-            [
-                StructField(f"{prefix}_player_id", IntegerType(), True),
-                StructField(f"{prefix}_frame_start", IntegerType(), True),
-                StructField(f"{prefix}_frame_end", IntegerType(), True),
-                StructField(f"{prefix}_detection_count", IntegerType(), True),
-                StructField(f"{prefix}_avg_color", StringType(), True),
-                StructField(f"{prefix}_timestamp_start", FloatType(), True),
-                StructField(f"{prefix}_timestamp_end", FloatType(), True),
-                StructField(f"{prefix}_avg_width", FloatType(), True),
-                StructField(f"{prefix}_avg_height", FloatType(), True),
-                StructField(f"{prefix}_first_x1", FloatType(), True),
-                StructField(f"{prefix}_first_y1", FloatType(), True),
-                StructField(f"{prefix}_first_x2", FloatType(), True),
-                StructField(f"{prefix}_first_y2", FloatType(), True),
-                StructField(f"{prefix}_first_cx", FloatType(), True),
-                StructField(f"{prefix}_first_cy", FloatType(), True),
-                StructField(f"{prefix}_mid_x1", FloatType(), True),
-                StructField(f"{prefix}_mid_y1", FloatType(), True),
-                StructField(f"{prefix}_mid_x2", FloatType(), True),
-                StructField(f"{prefix}_mid_y2", FloatType(), True),
-                StructField(f"{prefix}_mid_cx", FloatType(), True),
-                StructField(f"{prefix}_mid_cy", FloatType(), True),
-                StructField(f"{prefix}_last_x1", FloatType(), True),
-                StructField(f"{prefix}_last_y1", FloatType(), True),
-                StructField(f"{prefix}_last_x2", FloatType(), True),
-                StructField(f"{prefix}_last_y2", FloatType(), True),
-                StructField(f"{prefix}_last_cx", FloatType(), True),
-                StructField(f"{prefix}_last_cy", FloatType(), True),
-            ]
-        )
-
-        return self.spark.createDataFrame(rows, schema=schema)
-
     def _has_frame_overlap_expr(self, fs_a, fe_a, fs_b, fe_b):
         """Spark expression for frame overlap check."""
         return greatest(fs_a, fs_b) <= least(fe_a, fe_b)
@@ -304,7 +260,7 @@ class PlayerValidator(PlayerValidatorBase):
 
     def _position_dist_expr(self, cx1, cy1, cx2, cy2):
         """Spark UDF call for position distance."""
-        return euclidean_distance_udf(cx1, cy1, cx2, cy2)
+        return sqrt(pow(cx1 - cx2, 2) + pow(cy1 - cy2, 2))
 
     def _composite_score_expr(self, first_pos_dist, mid_pos_dist, gap):
         """Calculate composite score as Spark expression."""
@@ -312,11 +268,7 @@ class PlayerValidator(PlayerValidatorBase):
         mid_score = mid_pos_dist / self.MAX_DISTANCE
         gap_score = gap / self.MAX_FRAME_GAP
 
-        return (
-            0.45 * position_score
-            + 0.45 * mid_score
-            + 0.1 * gap_score
-        )
+        return 0.45 * position_score + 0.45 * mid_score + 0.1 * gap_score
 
     def _calculate_iou_diff(
         self,

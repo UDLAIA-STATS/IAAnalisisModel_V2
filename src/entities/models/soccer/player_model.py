@@ -11,10 +11,15 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     track_id: int = Field(index=True)
     team_id: int = Field(index=True, default=None, nullable=True)
     team_color: str = Field(index=True, default=None, nullable=True)
+
     goals: int = Field(default=0)  # Goles del jugador
     shirt_number: int = Field(nullable=True, default=None)
+    ball_possession_time: float = Field(default=0)
+
     crop_path: str = Field(nullable=True, default=None)
     heatmap_path: str = Field(nullable=True, default=None)
+    team_heatmap_path: str = Field(nullable=True, default=None)
+    movement_trajectories_path: str = Field(nullable=True, default=None)
 
     states: list["PlayerState"] = Relationship(back_populates="player", cascade_delete=True)
     numbers: list["PlayerNumbers"] = Relationship(back_populates="player", cascade_delete=True)
@@ -24,9 +29,15 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
 class PlayerNumbers(NumericIdModel, AuditTable, table=True):
     __tablename__: str = "players_numbers"  # type: ignore
     player_id: int = Field(foreign_key="players.id", index=True)
-    number: int
+    frame_number: int = Field(index=True)
+    number: int = Field(nullable=True, default=None)
+    tens_none_prob: float
     confidence: float
-    frame_number: int
+    visible_prob: float
+    tens_pred: int
+    tens_prob: float
+    units_pred: int
+    units_prob: float
 
     player: PlayerModel = Relationship(back_populates="numbers")
 
@@ -85,18 +96,3 @@ class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, Dynami
     ball_id: int | None = Field(foreign_key="ball_states.id", default=None, description="Id de la pelota si el jugador posee el balon", nullable=True)
 
     player: PlayerModel = Relationship(back_populates="states")
-
-    def recalculate_physics(self):
-        self.dx = 0
-        self.dy = 0
-        self.delta_x = 0
-        self.delta_y = 0
-        self.distance_meters = 0
-
-        self.vx = 0
-        self.vy = 0
-        self.speed_kmh = 0
-
-        self.acceleration = 0
-        self.ax = 0
-        self.ay = 0

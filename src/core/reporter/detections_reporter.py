@@ -10,9 +10,9 @@ from src.entities.reporter.detections_reporter_base import DetectionsReporterBas
 from src.entities.reporter.match_spatial_analyzer import MatchSpatialAnalyzer
 from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
 
-
 class DetectionsReporter(DetectionsReporterBase):
     def __init__(self):
+        
         super().__init__()
         self.spatial_analyzer = MatchSpatialAnalyzer()
 
@@ -24,12 +24,12 @@ class DetectionsReporter(DetectionsReporterBase):
         )
 
         self.write_detections_report(report_path, report_rows)
+        number_report = self.generate_number_report(match_id, session)
 
         class_chart_str, time_chart_str, dynamics_chart_str, heatmap_chart_str = (
             self.generate_diagrams(report_path, match_id)
         )
 
-        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(report_path, match_id) 
 
         speed_chart, distance_chart = self.generate_per_player_timeseries(
             report_path, match_id
@@ -42,6 +42,9 @@ class DetectionsReporter(DetectionsReporterBase):
             dist_matrix_chart,
             traj_chart,
         ) = self.spatial_analyzer.generate_spatial_diagrams(report_path, match_id)
+        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(report_path, match_id, session) 
+        
+
 
         reports = [
             ("report_detections", report_path.as_posix()),
@@ -56,6 +59,7 @@ class DetectionsReporter(DetectionsReporterBase):
             ("velocity_kde_by_team", velocity_kde_chart),
             ("team_distance_matrix", dist_matrix_chart),
             ("movement_trajectories", traj_chart),
+            ("number_report", number_report),
         ]
 
 
@@ -79,6 +83,7 @@ class DetectionsReporter(DetectionsReporterBase):
             chart_keys["velocity_kde_by_team"],
             chart_keys["team_distance_matrix"],
             chart_keys["movement_trajectories"],
+            chart_keys["number_report"],
         )
 
 

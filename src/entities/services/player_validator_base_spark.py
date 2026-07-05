@@ -75,7 +75,7 @@ class PlayerValidatorBase:
 
     def _build_track_summaries(
         self, centroids_df: DataFrame
-    ) -> Dict[int, TrackSummary]:
+    ) -> DataFrame:
         window_asc = Window.partitionBy("player_id").orderBy(col("frame_number"))
         window_desc = Window.partitionBy("player_id").orderBy(
             col("frame_number").desc()
@@ -154,42 +154,36 @@ class PlayerValidatorBase:
             .join(avg_colors, "player_id", "left")
         )
 
-        summaries_dict: Dict[int, TrackSummary] = {}
-        for row in summaries_df.collect():
-            mid_pos = row.mid_pos or row.first_pos
-            summaries_dict[row.player_id] = TrackSummary(
-                player_id=row.player_id,
-                tracker_id=row.tracker_id,
-                frame_start=int(row.frame_start),
-                timestamp_start=float(row.timestamp_start),
-                timestamp_end=float(row.timestamp_end),
-                frame_end=int(row.frame_end),
-                detection_count=int(row.detection_count),
-                avg_color=row.avg_color if row.avg_color else "0,0,0",
-                first_cx=float(row.first_pos.cx),
-                first_cy=float(row.first_pos.cy),
-                last_cx=float(row.last_pos.cx),
-                last_cy=float(row.last_pos.cy),
-                mid_cx=float(mid_pos.cx),
-                mid_cy=float(mid_pos.cy),
-                avg_height=float(row.avg_height),
-                avg_width=float(row.avg_width),
-                first_x1=float(row.first_pos.x1),
-                first_y1=float(row.first_pos.y1),
-                first_x2=float(row.first_pos.x2),
-                first_y2=float(row.first_pos.y2),
-                last_x1=float(row.last_pos.x1),
-                last_y1=float(row.last_pos.y1),
-                last_x2=float(row.last_pos.x2),
-                last_y2=float(row.last_pos.y2),
-                mid_x1=float(mid_pos.x1),
-                mid_y1=float(mid_pos.y1),
-                mid_x2=float(mid_pos.x2),
-                mid_y2=float(mid_pos.y2),
-                avg_confidence=float(row.avg_confidence),
-            )
-
-        return summaries_dict
+        return summaries_df.select(
+            col("player_id"),
+            col("tracker_id"),
+            col("frame_start"),
+            col("frame_end"),
+            col("detection_count"),
+            col("avg_color"),
+            col("avg_width"),
+            col("avg_height"),
+            col("timestamp_start"),
+            col("timestamp_end"),
+            col("first_pos.cx").alias("first_cx"),
+            col("first_pos.cy").alias("first_cy"),
+            col("first_pos.x1").alias("first_x1"),
+            col("first_pos.y1").alias("first_y1"),
+            col("first_pos.x2").alias("first_x2"),
+            col("first_pos.y2").alias("first_y2"),
+            col("mid_pos.cx").alias("mid_cx"),
+            col("mid_pos.cy").alias("mid_cy"),
+            col("mid_pos.x1").alias("mid_x1"),
+            col("mid_pos.y1").alias("mid_y1"),
+            col("mid_pos.x2").alias("mid_x2"),
+            col("mid_pos.y2").alias("mid_y2"),
+            col("last_pos.cx").alias("last_cx"),
+            col("last_pos.cy").alias("last_cy"),
+            col("last_pos.x1").alias("last_x1"),
+            col("last_pos.y1").alias("last_y1"),
+            col("last_pos.x2").alias("last_x2"),
+            col("last_pos.y2").alias("last_y2"),
+        )
 
     def _build_centroids(
         self, states: List[PlayerState], session: Session

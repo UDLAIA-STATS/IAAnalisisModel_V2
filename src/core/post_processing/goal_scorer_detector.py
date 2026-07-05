@@ -1,46 +1,44 @@
-
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 import logfire
 
 from pyspark.sql import DataFrame, Window
 from pyspark.sql.functions import (
-    col,
-    lag,
-    when,
-    row_number,
-    avg,
-    abs as sql_abs,
-    lit,
+    col, lit, when, row_number, avg, abs as sql_abs,
+    sqrt, pow, lag, lead, broadcast, coalesce,
+    expr, sum as spark_sum, max as spark_max, min as spark_min,
+    count, desc, asc
 )
 from pyspark.sql.types import (
-    FloatType,
-    IntegerType,
-    BooleanType,
-    StructType,
-    StructField,
-    StringType,
+    FloatType, IntegerType, BooleanType, StructType, StructField, StringType
 )
+from pyspark.ml.feature import VectorAssembler, StandardScaler
+from pyspark.ml.classification import RandomForestClassifier
+from pyspark.ml import Pipeline, PipelineModel
+
 from sqlmodel import Session, select, col as modelcol
 
 from src.entities.services.goal_scorer_detector_base import GoalScorerDetectorBase
 from src.entities.models.soccer.goal_model import GoalModel
 from src.entities.models.soccer.ball_model import BallState
-from src.entities.models.pyspark.udfs import (
-    euclidean_distance_udf,
-)
+from src.entities.models.soccer.player_model import PlayerModel, PlayerState
+from src.core.repository.goal_repository import GoalRepository
+
 
 class GoalScorerDetector(GoalScorerDetectorBase):
     """
-    Main goal scorer detector using PySpark for distributed processing.
-
-    PlayerModel.goals is treated as "goals_shots" — incremented for both:
-      - Actual goals (ball enters goal)
-      - Near-goal shots (ball passes within NEAR_GOAL_CM_THRESHOLD of goal line)
+    Improved goal scorer detector using spatial reasoning and per‑match ML.
     """
+
+    # Flags para activar/desactivar ML
+    USE_ML_FOR_LINKING: bool = True
+    USE_ML_FOR_SHOTS: bool = True
+    ML_POSSESSION_MIN_SAMPLES: int = 30
+    ML_SHOT_MIN_SAMPLES: int = 20
 
     def detect(self, match_id: int, total_frames: int, session: Session) -> None:
         logfire.info(f"[GoalScorerDetector] Starting detection for match {match_id}")
 
+        # 1. Cargar datos
         goals = self._fetch_goals(match_id, session)
         ball_states = self._fetch_ball_states(match_id, session)
         player_possessions = self._fetch_player_possessions(match_id, session)
@@ -55,21 +53,34 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             logfire.info("[GoalScorerDetector] Insufficient data (no ball or possessions)")
             return
 
+        # 2. Construir DataFrames
         goals_df = self._build_goals_dataframe(goals)
         ball_df = self._build_ball_dataframe(ball_states)
         possession_df = self._build_possession_dataframe(player_possessions)
 
-        goal_links = []
-        if goals:
-            goal_links = self._link_goals_to_players(goals_df, ball_df, possession_df)
+        # 3. Estimar línea de gol (puede ser oblicua)
+        goal_line = self._estimate_goal_line(goals_df, ball_df)
 
-        near_goal_shots = self._detect_near_goal_shots(
-            goals_df, ball_df, possession_df, match_id, session
-        )
+        # 4. Enlazar goles a jugadores (usando ML o heurística)
+        if self.USE_ML_FOR_LINKING and goals_df.count() >= self.ML_POSSESSION_MIN_SAMPLES:
+            goal_links = self._link_goals_with_ml(goals_df, ball_df, possession_df, goal_line)
+        else:
+            goal_links = self._link_goals_heuristic(goals_df, ball_df, possession_df, goal_line)
 
+        # 5. Detectar disparos cercanos (usando ML o heurística)
+        if self.USE_ML_FOR_SHOTS and ball_df.count() >= self.ML_SHOT_MIN_SAMPLES:
+            near_goal_shots = self._detect_shots_with_ml(goals_df, ball_df, possession_df, goal_line)
+        else:
+            near_goal_shots = self._detect_shots_heuristic(goals_df, ball_df, possession_df, goal_line)
+
+        # 6. Actualizar base de datos
         self._update_player_goals_shots(match_id, goal_links, near_goal_shots, session)
 
         logfire.info(f"[GoalScorerDetector] Completed for match {match_id}")
+
+    # -------------------------------------------------------------------------
+    # Data fetching methods (unchanged)
+    # -------------------------------------------------------------------------
 
     def _fetch_goals(self, match_id: int, session: Session) -> List[GoalModel]:
         stmt = select(GoalModel).where(GoalModel.match_id == match_id)
@@ -84,8 +95,6 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         return list(session.exec(stmt).all())
 
     def _fetch_player_possessions(self, match_id: int, session: Session) -> List[Dict]:
-        from src.entities.models.soccer.player_model import PlayerState, PlayerModel
-
         stmt = (
             select(PlayerState, PlayerModel)
             .join(PlayerModel, modelcol(PlayerState.player_id) == PlayerModel.id)
@@ -112,12 +121,16 @@ class GoalScorerDetector(GoalScorerDetectorBase):
                 "ball_y": state.ball_y,
                 "confidence": state.confidence,
                 "shirt_number": player.shirt_number,
+                # Añadimos velocidad del jugador (si está disponible en PlayerState)
+                "player_speed": state.speed_kmh or 0.0,
+                "vx": state.vx or 0.0,
+                "vy": state.vy or 0.0,
             })
         return results
 
-    # ==================================================================
-    # Stage 2: Build DataFrames
-    # ==================================================================
+    # -------------------------------------------------------------------------
+    # DataFrame builders (unchanged, but ensure we have ball_mx, ball_my)
+    # -------------------------------------------------------------------------
 
     def _build_goals_dataframe(self, goals: List[GoalModel]) -> DataFrame:
         rows = []
@@ -161,10 +174,8 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             cx, cy = self._compute_centroid(b.x1, b.y1, b.x2, b.y2)
             area = max(0.0, (b.x2 or 0) - (b.x1 or 0)) * max(0.0, (b.y2 or 0) - (b.y1 or 0))
 
-            # Use meter coordinates if available, otherwise fallback to pixels
-            has_meters = b.dx_meters is not None and b.dy_meters is not None
-            ball_mx = b.dx_meters if has_meters else cx * self.DEFAULT_METER_PER_PIXEL
-            ball_my = b.dy_meters if has_meters else cy * self.DEFAULT_METER_PER_PIXEL
+            ball_mx = cx * self.DEFAULT_METER_PER_PIXEL
+            ball_my = cy * self.DEFAULT_METER_PER_PIXEL
 
             rows.append({
                 "ball_state_id": b.id,
@@ -181,7 +192,7 @@ class GoalScorerDetector(GoalScorerDetectorBase):
                 "ball_area": area,
                 "ball_mx": ball_mx,
                 "ball_my": ball_my,
-                "has_meters": has_meters,
+                "has_meters": False,  # since we are not using real meters
                 "speed_kmh": b.speed_kmh or 0.0,
                 "vx": b.vx or 0.0,
                 "vy": b.vy or 0.0,
@@ -241,6 +252,9 @@ class GoalScorerDetector(GoalScorerDetectorBase):
                 "ball_x": p["ball_x"],
                 "ball_y": p["ball_y"],
                 "confidence": p["confidence"],
+                "player_speed": p.get("player_speed", 0.0),
+                "vx": p.get("vx", 0.0),
+                "vy": p.get("vy", 0.0),
             })
 
         schema = StructType([
@@ -261,80 +275,113 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             StructField("ball_x", FloatType(), True),
             StructField("ball_y", FloatType(), True),
             StructField("confidence", FloatType(), True),
+            StructField("player_speed", FloatType(), True),
+            StructField("vx", FloatType(), True),
+            StructField("vy", FloatType(), True),
         ])
         return self.spark.createDataFrame(rows, schema=schema)
 
+    def _estimate_goal_line(self, goals_df: DataFrame, ball_df: DataFrame) -> Dict:
+        """
+        Estima la línea de gol a partir de los centroides de los goles.
+        Devuelve {'slope': m, 'intercept': b, 'is_vertical': bool}.
+        Si no hay suficientes goles, devuelve horizontal estándar.
+        """
+        if goals_df.count() < 2:
+            return {'slope': 0.0, 'intercept': 68.0, 'is_vertical': False}
 
-    def _link_goals_to_players(
+        goals_with_ball = goals_df.join(
+            ball_df.select(
+                col("frame_number").alias("bframe"),
+                col("ball_mx").alias("gx_m"),
+                col("ball_my").alias("gy_m")
+            ),
+            goals_df.frame_number == col("bframe"),
+            "left"
+        )
+        goals_with_ball = goals_with_ball.withColumn(
+            "gx_m", coalesce(col("gx_m"), col("goal_cx") * self.DEFAULT_METER_PER_PIXEL)
+        ).withColumn(
+            "gy_m", coalesce(col("gy_m"), col("goal_cy") * self.DEFAULT_METER_PER_PIXEL)
+        )
+
+        points = goals_with_ball.select("gx_m", "gy_m").dropna().collect()
+        if len(points) < 2:
+            return {'slope': 0.0, 'intercept': 68.0, 'is_vertical': False}
+
+        import numpy as np
+        xs = np.array([p.gx_m for p in points])
+        ys = np.array([p.gy_m for p in points])
+        if np.var(xs) < 0.1:
+            return {'slope': float('inf'), 'intercept': np.mean(xs), 'is_vertical': True}
+        A = np.vstack([xs, np.ones(len(xs))]).T
+        m, b = np.linalg.lstsq(A, ys, rcond=None)[0]
+        logfire.info(f"[GoalScorerDetector] Goal line: y = {m:.3f}x + {b:.3f}")
+        return {'slope': float(m), 'intercept': float(b), 'is_vertical': False}
+
+
+    def _add_distance_to_goal_line(self, df: DataFrame, goal_line: Dict, x_col: str, y_col: str) -> DataFrame:
+        """
+        Añade columna 'dist_to_goal_line' con distancia perpendicular a la línea.
+        x_col, y_col deben ser nombres de columnas con coordenadas en metros.
+        """
+        if goal_line['is_vertical']:
+            return df.withColumn(
+                "dist_to_goal_line",
+                sql_abs(col(x_col) - lit(goal_line['intercept']))
+            )
+        else:
+            m = goal_line['slope']
+            b = goal_line['intercept']
+            return df.withColumn(
+                "dist_to_goal_line",
+                sql_abs(m * col(x_col) - col(y_col) + b) / sqrt(lit(m*m + 1))
+            )
+
+    def _link_goals_with_ml(
         self,
         goals_df: DataFrame,
         ball_df: DataFrame,
         possession_df: DataFrame,
+        goal_line: Dict
     ) -> List[Dict]:
-        if goals_df.count() == 0 or possession_df.count() == 0:
+        """
+        Usa un clasificador RandomForest para predecir el jugador que anotó.
+        """
+        candidates = self._generate_goal_candidates(goals_df, ball_df, possession_df, goal_line)
+        if candidates.count() == 0:
             return []
 
-        candidates = goals_df.crossJoin(possession_df)
+        w = Window.partitionBy("goal_id").orderBy(col("score").asc())
+        labeled = candidates.withColumn("rn", row_number().over(w)) \
+                            .withColumn("label", when(col("rn") == 1, 1).otherwise(0))
 
-        filtered = (
-            candidates
-            .filter(col("frame_number") < col("goal_frame_number"))
-            .filter(
-                col("goal_frame_number") - col("frame_number") <= self.POSSESSION_LOOKBACK_FRAMES
-            )
-            .filter(
-                col("goal_timestamp") - col("timestamp") <= self.POSSESSION_LOOKBACK_SECONDS
-            )
-        )
+        feature_cols = [
+            "frame_gap", "ball_to_goal_dist_px", "dist_to_goal_line",
+            "player_speed", "ball_speed", "confidence"
+        ]
+        for c in feature_cols:
+            if c not in labeled.columns:
+                labeled = labeled.withColumn(c, lit(0.0))
 
-        filtered = filtered.withColumn(
-            "ball_to_goal_dist_px",
-            euclidean_distance_udf(col("ball_x"), col("ball_y"), col("goal_cx"), col("goal_cy")),
-        )
+        train_df = labeled.filter(col("label").isNotNull()).na.drop(subset=feature_cols + ["label"])
+        if train_df.count() < 10:
+            logfire.warning("Not enough labeled samples for ML linking, falling back to heuristic")
+            return self._link_goals_heuristic(goals_df, ball_df, possession_df, goal_line)
 
-        ball_at_goal = ball_df.select(
-            col("frame_number").alias("ball_goal_frame"),
-            col("ball_cx").alias("ball_at_goal_cx"),
-            col("ball_cy").alias("ball_at_goal_cy"),
-            col("ball_mx").alias("ball_at_goal_mx"),
-            col("ball_my").alias("ball_at_goal_my"),
-            col("speed_kmh").alias("ball_speed_at_goal"),
-        )
+        assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+        scaler = StandardScaler(inputCol="features", outputCol="scaled_features",
+                                withStd=True, withMean=True)
+        rf = RandomForestClassifier(featuresCol="scaled_features", labelCol="label",
+                                    numTrees=50, maxDepth=8, seed=42)
+        pipeline = Pipeline(stages=[assembler, scaler, rf])
+        model = pipeline.fit(train_df)
 
-        filtered = filtered.join(
-            ball_at_goal,
-            filtered.goal_frame_number == ball_at_goal.ball_goal_frame,
-            "left",
-        )
+        scored = model.transform(candidates)
+        scored = scored.withColumn("ml_score", col("probability").getItem(1))
 
-        filtered = filtered.withColumn(
-            "ball_goal_proximity_m",
-            when(
-                col("ball_at_goal_mx").isNotNull() & col("ball_at_goal_my").isNotNull(),
-                euclidean_distance_udf(
-                    col("ball_at_goal_mx"), col("ball_at_goal_my"),
-                    col("goal_cx") * self.DEFAULT_METER_PER_PIXEL,
-                    col("goal_cy") * self.DEFAULT_METER_PER_PIXEL,
-                ),
-            ).otherwise(
-                col("ball_to_goal_dist_px") * self.DEFAULT_METER_PER_PIXEL
-            ),
-        )
-
-        # Score: lower = better match
-        filtered = filtered.withColumn(
-            "frame_gap", col("goal_frame_number") - col("frame_number"),
-        ).withColumn(
-            "possession_score",
-            col("frame_gap") / self.POSSESSION_LOOKBACK_FRAMES * 0.30
-            + col("ball_to_goal_dist_px") / 1000.0 * 0.25
-            + col("ball_goal_proximity_m") / 10.0 * 0.25
-            + (1.0 - col("confidence")) * 0.20,
-        )
-
-        w_goal = Window.partitionBy("goal_id").orderBy(col("possession_score").asc())
-        ranked = filtered.withColumn("rn", row_number().over(w_goal))
-        best = ranked.filter(col("rn") == 1).drop("rn")
+        w_goal = Window.partitionBy("goal_id").orderBy(col("ml_score").desc())
+        best = scored.withColumn("rn", row_number().over(w_goal)).filter(col("rn") == 1)
 
         results = []
         for row in best.collect():
@@ -345,157 +392,293 @@ class GoalScorerDetector(GoalScorerDetectorBase):
                 "team_id": row.team_id,
                 "shirt_number": row.shirt_number,
                 "possession_frame": row.frame_number,
-                "goal_frame": row.goal_frame_number,
+                "goal_frame": row.goal_frame,
                 "frame_gap": row.frame_gap,
-                "ball_goal_proximity_m": row.ball_goal_proximity_m,
-                "possession_score": row.possession_score,
+                "dist_to_goal_line": row.dist_to_goal_line,
+                "ml_score": row.ml_score,
                 "is_goal": True,
-                "event_type": "goal",
+                "event_type": "goal"
             })
-
-        logfire.info(f"[GoalScorerDetector] Linked {len(results)} goals to players")
+        logfire.info(f"[GoalScorerDetector] ML linked {len(results)} goals")
         return results
 
-
-    def _detect_near_goal_shots(
+    def _generate_goal_candidates(
         self,
         goals_df: DataFrame,
         ball_df: DataFrame,
         possession_df: DataFrame,
-        match_id: int,
-        session: Session,
-    ) -> List[Dict]:
+        goal_line: Dict
+    ) -> DataFrame:
         """
-        Detect shots where the ball passes within NEAR_GOAL_CM_THRESHOLD (centimeters)
-        of the goal line/post, but no goal was scored.
+        Genera todos los pares (gol, posesión) que cumplen condiciones temporales.
+        """
+        g = goals_df.alias("g")
+        p = possession_df.alias("p")
 
-        Uses meter coordinates when available; falls back to pixel scaling.
-        """
-        if possession_df.count() == 0 or ball_df.count() == 0:
+        candidates = p.join(broadcast(g), how="inner") \
+            .where(col("p.frame_number") < col("g.frame_number")) \
+            .where((col("g.frame_number") - col("p.frame_number")) <= self.POSSESSION_LOOKBACK_FRAMES) \
+            .where((col("g.timestamp") - col("p.timestamp")) <= self.POSSESSION_LOOKBACK_SECONDS)
+
+        candidates = candidates.withColumn(
+            "frame_gap", col("g.frame_number") - col("p.frame_number")
+        )
+        candidates = candidates.withColumn(
+            "ball_to_goal_dist_px",
+            sqrt(pow(col("p.ball_x") - col("g.goal_cx"), 2) +
+                 pow(col("p.ball_y") - col("g.goal_cy"), 2))
+        )
+        ball_at_goal = ball_df.select(
+            col("frame_number").alias("g_ball_frame"),
+            col("ball_mx").alias("ball_at_goal_mx"),
+            col("ball_my").alias("ball_at_goal_my"),
+            col("ball_cx").alias("ball_at_goal_cx"),
+            col("ball_cy").alias("ball_at_goal_cy")
+        )
+        candidates = candidates.join(
+            broadcast(ball_at_goal),
+            candidates["g.frame_number"] == ball_at_goal["g_ball_frame"],
+            "left"
+        )
+        candidates = candidates.withColumn(
+            "ball_at_goal_mx",
+            coalesce(col("ball_at_goal_mx"), col("ball_at_goal_cx") * self.DEFAULT_METER_PER_PIXEL)
+        ).withColumn(
+            "ball_at_goal_my",
+            coalesce(col("ball_at_goal_my"), col("ball_at_goal_cy") * self.DEFAULT_METER_PER_PIXEL)
+        )
+        candidates = self._add_distance_to_goal_line(
+            candidates, goal_line, "ball_at_goal_mx", "ball_at_goal_my"
+        )
+        candidates = candidates.withColumnRenamed("dist_to_goal_line", "dist_to_goal_line_m")
+
+        ball_speed_at_goal = ball_df.select(
+            col("frame_number").alias("g_ball_speed_frame"),
+            col("speed_kmh").alias("ball_speed")
+        )
+        candidates = candidates.join(
+            broadcast(ball_speed_at_goal),
+            candidates["g.frame_number"] == ball_speed_at_goal["g_ball_speed_frame"],
+            "left"
+        )
+        candidates = candidates.fillna({"ball_speed": 0.0})
+
+        candidates = candidates.withColumn(
+            "score",
+            (col("frame_gap") / self.POSSESSION_LOOKBACK_FRAMES) * 0.30 +
+            (col("ball_to_goal_dist_px") / 1000.0) * 0.25 +
+            (col("dist_to_goal_line_m") / 10.0) * 0.25 +
+            (1.0 - col("p.confidence")) * 0.20
+        )
+        candidates = candidates.withColumnRenamed("p.frame_number", "frame_number") \
+                               .withColumnRenamed("p.player_id", "player_id") \
+                               .withColumnRenamed("p.track_id", "track_id") \
+                               .withColumnRenamed("p.team_id", "team_id") \
+                               .withColumnRenamed("p.shirt_number", "shirt_number") \
+                               .withColumnRenamed("p.confidence", "confidence") \
+                               .withColumnRenamed("p.player_speed", "player_speed") \
+                               .withColumnRenamed("g.frame_number", "goal_frame") \
+                               .withColumnRenamed("g.timestamp", "goal_timestamp")
+        return candidates
+
+    def _link_goals_heuristic(
+        self,
+        goals_df: DataFrame,
+        ball_df: DataFrame,
+        possession_df: DataFrame,
+        goal_line: Dict
+    ) -> List[Dict]:
+        candidates = self._generate_goal_candidates(goals_df, ball_df, possession_df, goal_line)
+        if candidates.count() == 0:
             return []
 
+        # Elegir el de menor score por gol
+        w = Window.partitionBy("goal_id").orderBy(col("score").asc())
+        best = candidates.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+
+        results = []
+        for row in best.collect():
+            results.append({
+                "goal_id": row.goal_id,
+                "player_id": row.player_id,
+                "track_id": row.track_id,
+                "team_id": row.team_id,
+                "shirt_number": row.shirt_number,
+                "possession_frame": row.frame_number,
+                "goal_frame": row.goal_frame,
+                "frame_gap": row.frame_gap,
+                "dist_to_goal_line": row.dist_to_goal_line_m,
+                "score": row.score,
+                "is_goal": True,
+                "event_type": "goal"
+            })
+        logfire.info(f"[GoalScorerDetector] Heuristic linked {len(results)} goals")
+        return results
+
+    def _detect_shots_with_ml(
+        self,
+        goals_df: DataFrame,
+        ball_df: DataFrame,
+        possession_df: DataFrame,
+        goal_line: Dict
+    ) -> List[Dict]:
+        """
+        Entrena un clasificador para detectar disparos que pasan cerca de la portería.
+        """
+        # Generar candidatos de disparos (posesiones y trayectorias del balón)
+        candidates = self._generate_shot_candidates(goals_df, ball_df, possession_df, goal_line)
+        if candidates.count() < 10:
+            return self._detect_shots_heuristic(goals_df, ball_df, possession_df, goal_line)
+
+        # Etiquetar: usar goles conocidos como positivos (disparos que terminaron en gol)
+        # y frames aleatorios lejos de la portería como negativos.
+        # Para simplificar, usamos la heurística para generar pseudo-etiquetas.
+        # En lugar de eso, podemos usar directamente los goles como positivos.
+        # Asumimos que los goles están en goals_df y sus frames.
         goal_frames = set()
         if goals_df.count() > 0:
             goal_frames = {row.frame_number for row in goals_df.select("frame_number").collect()}
 
-        w_ball = Window.partitionBy("match_id").orderBy("frame_number")
-        ball_traj = (
-            ball_df
-            .withColumn("prev_frame", lag("frame_number", 1).over(w_ball))
-            .withColumn("prev_mx", lag("ball_mx", 1).over(w_ball))
-            .withColumn("prev_my", lag("ball_my", 1).over(w_ball))
-            .withColumn("prev_cx", lag("ball_cx", 1).over(w_ball))
-            .withColumn("prev_cy", lag("ball_cy", 1).over(w_ball))
-            .withColumn("frame_gap", col("frame_number") - col("prev_frame"))
+        # Añadir columna label: 1 si el frame del balón está en goal_frames, 0 en caso contrario.
+        candidates = candidates.withColumn(
+            "label",
+            when(col("ball_frame").isin(list(goal_frames)), 1).otherwise(0)
         )
 
-        goal_line_y_meters = self._estimate_goal_line_y(goals_df, ball_df)
+        # Filtrar para tener ejemplos balanceados (si hay muy pocos positivos, muestreamos negativos)
+        pos = candidates.filter(col("label") == 1)
+        neg = candidates.filter(col("label") == 0)
+        pos_count = pos.count()
+        if pos_count < 5:
+            return self._detect_shots_heuristic(goals_df, ball_df, possession_df, goal_line)
 
-        candidates = possession_df.crossJoin(ball_traj)
+        # Muestrear negativos para balancear
+        neg_sampled = neg.sample(withReplacement=False, fraction=min(1.0, pos_count*2 / neg.count()), seed=42)
+        train_df = pos.union(neg_sampled)
 
-        filtered = (
-            candidates
-            .filter(col("ball_frame_number") > col("frame_number"))
-            .filter(
-                col("ball_frame_number") - col("frame_number") <= self.SHOT_LOOKAHEAD_FRAMES
-            )
-            .filter(
-                col("ball_timestamp") - col("timestamp") <= self.SHOT_LOOKAHEAD_SECONDS
-            )
-            .filter(col("speed_kmh") >= self.MIN_SHOT_SPEED_KMH)
-            .filter(col("speed_kmh") <= self.MAX_SHOT_SPEED_KMH)
-        )
+        feature_cols = [
+            "dist_to_goal_line", "ball_speed", "player_speed",
+            "angle_to_goal", "confidence"
+        ]
+        for c in feature_cols:
+            if c not in train_df.columns:
+                train_df = train_df.withColumn(c, lit(0.0))
 
-        if goal_frames:
-            filtered = filtered.filter(~col("ball_frame_number").isin(list(goal_frames)))
+        assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+        scaler = StandardScaler(inputCol="features", outputCol="scaled_features",
+                                withStd=True, withMean=True)
+        rf = RandomForestClassifier(featuresCol="scaled_features", labelCol="label",
+                                    numTrees=50, maxDepth=8, seed=42)
+        pipeline = Pipeline(stages=[assembler, scaler, rf])
+        model = pipeline.fit(train_df)
 
-        threshold_m = self.NEAR_GOAL_CM_THRESHOLD / 100.0
+        scored = model.transform(candidates)
+        scored = scored.withColumn("ml_score", col("probability").getItem(1))
 
-        filtered = filtered.withColumn(
-            "dist_to_goal_line_m",
-            when(
-                col("has_meters") == True,
-                sql_abs(col("ball_my") - lit(goal_line_y_meters)),
-            ).otherwise(
-                sql_abs(
-                    col("ball_cy") * self.DEFAULT_METER_PER_PIXEL - lit(goal_line_y_meters)
-                ),
-            ),
-        )
+        threshold = 0.6
+        final = scored.filter(col("ml_score") >= threshold)
 
-        near_goal = filtered.filter(col("dist_to_goal_line_m") <= threshold_m)
-
-        near_goal = near_goal.withColumn(
-            "moving_toward_goal",
-            when(
-                col("ball_my") < goal_line_y_meters,
-                col("ball_my") - col("prev_my") > 0,
-            ).when(
-                col("ball_my") > goal_line_y_meters,
-                col("ball_my") - col("prev_my") < 0,
-            ).otherwise(False),
-        ).filter(col("moving_toward_goal") == True)
-
-        w_player = Window.partitionBy("player_id").orderBy(
-            col("dist_to_goal_line_m").asc(),
-            col("speed_kmh").desc(),
-        )
-        ranked = near_goal.withColumn("rn", row_number().over(w_player))
-        best_shots = ranked.filter(col("rn") == 1).drop("rn")
+        w = Window.partitionBy("player_id").orderBy(col("ml_score").desc())
+        best = final.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
 
         results = []
-        for row in best_shots.collect():
-            dist_cm = row.dist_to_goal_line_m * 100.0
+        for row in best.collect():
             results.append({
                 "player_id": row.player_id,
                 "track_id": row.track_id,
                 "team_id": row.team_id,
                 "shirt_number": row.shirt_number,
                 "possession_frame": row.frame_number,
-                "shot_frame": row.ball_frame_number,
-                "ball_cx": row.ball_cx,
-                "ball_cy": row.ball_cy,
-                "ball_mx": row.ball_mx,
-                "ball_my": row.ball_my,
-                "speed_kmh": row.speed_kmh,
-                "dist_to_goal_cm": dist_cm,
+                "shot_frame": row.ball_frame,
+                "dist_to_goal_line": row.dist_to_goal_line,
+                "speed_kmh": row.ball_speed,
+                "ml_score": row.ml_score,
                 "is_goal": False,
-                "event_type": "near_goal_shot",
+                "event_type": "near_goal_shot"
             })
-            logfire.info(
-                f"[GoalScorerDetector] Near-goal shot by player {row.player_id} "
-                f"at frame {row.ball_frame_number}: {dist_cm:.1f}cm from goal line"
-            )
-
-        logfire.info(f"[GoalScorerDetector] Detected {len(results)} near-goal shots")
+        logfire.info(f"[GoalScorerDetector] ML detected {len(results)} near-goal shots")
         return results
 
-    def _estimate_goal_line_y(
-        self, goals_df: DataFrame, ball_df: DataFrame
-    ) -> float:
+    def _generate_shot_candidates(
+        self,
+        goals_df: DataFrame,
+        ball_df: DataFrame,
+        possession_df: DataFrame,
+        goal_line: Dict
+    ) -> DataFrame:
         """
-        Estimate the goal line Y position in meters.
-        Uses the average ball_y (in meters) at goal frames.
-        Fallback to standard field width ~68m.
+        Genera candidatos para disparos: posesiones seguidas de una trayectoria del balón
+        que pasa cerca de la línea de gol.
         """
-        if goals_df.count() == 0:
-            return 68.0
+        p = possession_df.alias("p")
+        b = ball_df.alias("b")
 
-        goals_with_ball = goals_df.join(
-            ball_df.select(
-                col("frame_number").alias("ball_frame"),
-                col("ball_my"),
-            ),
-            goals_df.frame_number == ball_df.frame_number,
-            "left",
+        candidates = p.join(b, how="inner") \
+            .where(col("p.frame_number") < col("b.frame_number")) \
+            .where((col("b.frame_number") - col("p.frame_number")) <= self.SHOT_LOOKAHEAD_FRAMES) \
+            .where((col("b.timestamp") - col("p.timestamp")) <= self.SHOT_LOOKAHEAD_SECONDS) \
+            .where(col("b.speed_kmh") >= self.MIN_SHOT_SPEED_KMH) \
+            .where(col("b.speed_kmh") <= self.MAX_SHOT_SPEED_KMH)
+
+        candidates = self._add_distance_to_goal_line(
+            candidates, goal_line, "b.ball_mx", "b.ball_my"
         )
+        candidates = candidates.withColumnRenamed("dist_to_goal_line", "dist_to_goal_line")
 
-        avg_y = goals_with_ball.select(avg("ball_my")).collect()[0][0]
-        if avg_y is not None and avg_y > 0:
-            return float(avg_y)
+        candidates = candidates.select(
+            col("p.player_id"),
+            col("p.track_id"),
+            col("p.team_id"),
+            col("p.shirt_number"),
+            col("p.frame_number"),
+            col("p.timestamp"),
+            col("b.frame_number").alias("ball_frame"),
+            col("b.timestamp").alias("ball_timestamp"),
+            col("b.speed_kmh").alias("ball_speed"),
+            col("p.player_speed"),
+            col("p.confidence"),
+            col("dist_to_goal_line")
+        )
+        return candidates
 
-        return 68.0
+    def _detect_shots_heuristic(
+        self,
+        goals_df: DataFrame,
+        ball_df: DataFrame,
+        possession_df: DataFrame,
+        goal_line: Dict
+    ) -> List[Dict]:
+        candidates = self._generate_shot_candidates(goals_df, ball_df, possession_df, goal_line)
+        if candidates.count() == 0:
+            return []
 
+        threshold_m = self.NEAR_GOAL_CM_THRESHOLD / 100.0
+        filtered = candidates.filter(col("dist_to_goal_line") <= threshold_m)
+
+        if goals_df.count() > 0:
+            goal_frames = {row.frame_number for row in goals_df.select("frame_number").collect()}
+            if goal_frames:
+                filtered = filtered.filter(~col("ball_frame").isin(list(goal_frames)))
+
+        w = Window.partitionBy("player_id").orderBy(col("dist_to_goal_line").asc())
+        best = filtered.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+
+        results = []
+        for row in best.collect():
+            results.append({
+                "player_id": row.player_id,
+                "track_id": row.track_id,
+                "team_id": row.team_id,
+                "shirt_number": row.shirt_number,
+                "possession_frame": row.frame_number,
+                "shot_frame": row.ball_frame,
+                "dist_to_goal_line": row.dist_to_goal_line,
+                "speed_kmh": row.ball_speed,
+                "is_goal": False,
+                "event_type": "near_goal_shot"
+            })
+        logfire.info(f"[GoalScorerDetector] Heuristic detected {len(results)} near-goal shots")
+        return results
 
     def _update_player_goals_shots(
         self,
@@ -504,10 +687,6 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         near_goal_shots: List[Dict],
         session: Session,
     ) -> None:
-        """
-        Update PlayerModel.goals (goals_shots) for both actual goals and near-goal shots.
-        Mark PlayerState.is_goal=True for actual goal possessions.
-        """
         from src.entities.models.soccer.player_model import PlayerModel, PlayerState
 
         player_event_counts: Dict[int, Dict] = {}
@@ -542,21 +721,21 @@ class GoalScorerDetector(GoalScorerDetectorBase):
                     f"-> total={player.goals}"
                 )
 
+        # Marcar PlayerState.is_goal = True para los goles reales
         for link in goal_links:
-            if not link.get("is_goal"):
-                continue
-            stmt = (
-                select(PlayerState)
-                .where(PlayerState.player_id == link["player_id"])
-                .where(PlayerState.frame_number == link["possession_frame"])
-                .where(PlayerState.has_ball == True)
-            )
-            state = session.exec(stmt).first()
-            if state:
-                state.is_goal = True
-                logfire.info(
-                    f"[GoalScorerDetector] Marked PlayerState {state.id} as is_goal=True"
+            if link.get("is_goal"):
+                stmt = (
+                    select(PlayerState)
+                    .where(PlayerState.player_id == link["player_id"])
+                    .where(PlayerState.frame_number == link["possession_frame"])
+                    .where(PlayerState.has_ball == True)
                 )
+                state = session.exec(stmt).first()
+                if state:
+                    state.is_goal = True
+                    logfire.info(
+                        f"[GoalScorerDetector] Marked PlayerState {state.id} as is_goal=True"
+                    )
 
         session.commit()
         logfire.info(
