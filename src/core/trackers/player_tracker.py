@@ -8,13 +8,10 @@ from supervision.detection.core import Detections
 from sqlmodel import SQLModel, Session
 
 from src.entities.types.bucket_types import FilePurposeTypes
-from src.core.repository.r2_repository import files_repository
-from src.core.repository.player_repository import PlayerRepository
+from src.core.repository import files_repository, PlayerRepository
 from src.config.routes import BYTETRACK_CONFIG_PATH, PLAYER_MODEL_PATH
 from src.core.repository.player_states_repository import PlayerStatesRepository
-from src.entities.models.app.detector_base import DetectorBase
-from src.entities.models.app.track_data import TrackData
-from src.entities.models.app.video_item import VideoItem
+from src.entities.models.app import TrackData, VideoItem, DetectorBase
 from src.entities.models.soccer.player_model import PlayerModel, PlayerState
 from src.entities.types.detector_types import DetectorTypes
 from src.core.video import player_annotator
@@ -42,7 +39,7 @@ class PlayerTracker(DetectorBase):
             conf=0.15,
             iou=0.6,
             verbose=False,
-            imgsz=1536,
+            imgsz=1920,
             device=self.device,
         )
 

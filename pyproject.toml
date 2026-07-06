@@ -27,8 +27,17 @@ dependencies = [
     "torchreid>=0.2.5",
     "ultralytics>=8.4.47",
     "uvicorn>=0.46.0",
+    "pnlcalib",
+    "lsq-ellipse>=2.2.1",
 ]
 
+[tool.uv.sources]
+pnlcalib = { workspace = true }
+
+[tool.uv.workspace]
+members = [
+    "addons/PnLCalib",
+]
 
 
 [tool.ruff]
@@ -63,6 +72,8 @@ exclude = [
     "migrations",
     "res"
 ]
+
+
 
 # Same as Black.
 line-length = 150

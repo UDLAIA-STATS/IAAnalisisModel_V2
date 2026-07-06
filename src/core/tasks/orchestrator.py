@@ -4,6 +4,9 @@ import traceback
 import logfire
 import tqdm
 
+from src.core.vision.calibrators.pnl_calibrator import PnLCalibrator
+from src.core.vision.correction.scale_corrector import ScaleCorrector
+from src.core.vision.detectors.pnl_detector import PnLFeatureDetector
 from src.config.routes import INPUT_VIDEOS_DIR
 from src.core.tasks.steps.post_process_steps import ValidationProcess
 from src.core.database import connection_manager
@@ -21,8 +24,7 @@ from src.entities.models.requests.queue_model import Task, TaskStep
 from src.entities.types.states import StatesModel
 from src.core.reporter.detections_reporter import reporter as detection_reporter
 from src.core.tasks.steps.conversion_steps import ConversionCalculatorSteps
-from src.core.vision import scale_motion_detector, tilt_detector
-from src.core.vision import pitch_homography
+from src.core.vision import scale_motion_detector, tilt_detector, pitch_homography
 
 class Orchestrator:
     def __init__(self):
@@ -70,6 +72,11 @@ class Orchestrator:
             scale_motion_detector.start(first_frame)
             tilt_detector.start(first_frame)
             pitch_homography.set_reference_frame_size(int(frame_w), int(frame_h))
+            pitch_homography.set_correctors(
+                scale_corrector=ScaleCorrector(session),
+                calibrator=PnLCalibrator(image_width=int(frame_w), image_height=int(frame_h)),
+                detector=PnLFeatureDetector(image_size=(int(frame_w), int(frame_h))),
+            )
 
             video_batching_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(video_batching_step, session)

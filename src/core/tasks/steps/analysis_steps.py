@@ -103,7 +103,7 @@ class NumberAndColorRecognition(AnalysisStepHandler):
 
                 label += f" | Number: {number.number}"
 
-            if len(labels) == len(player_annotator.detections):
+            if len(labels) == len(player_annotator.get_detections()):
                 video_item.annotated_frame = player_annotator.annotate(
                     annotated_frame=video_item.annotated_frame,
                     detections=None,

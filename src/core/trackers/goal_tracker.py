@@ -31,7 +31,7 @@ class GoalTracker(DetectorBase):
     @override
     def detect(self, frames) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
-        return self.model(
+        return self.model.predict(
             frames,
             conf=0.15,
             verbose=False,

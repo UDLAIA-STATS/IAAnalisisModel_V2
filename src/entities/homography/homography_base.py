@@ -1,21 +1,25 @@
-from typing import Optional
+from collections import deque
+from typing import Deque, Optional
 
 import cv2
 import logfire
 import numpy as np
 from sqlmodel import Session
 
+from src.core.vision.correction.scale_corrector import ScaleCorrector
 from src.entities.models.app.video_item import VideoItem
 from src.entities.homography.homography_cluster import HomographyCluster
 from src.entities.homography.homography_lines_operations import HomographyLinesOperation
-from src.entities.utils.homography_utils import _line_intersection
+from src.entities.utils.homography_utils import _line_intersection, _reprojection_error
 from src.entities.models.homography.homography_constants import (
     FIELD_HEIGHT,
     FIELD_KEYPOINTS,
     PITCH_WIDTH,
 )
 from src.entities.models.homography.homography_models import (
+    CalibratorBase,
     DetectedKeypoint,
+    FeatureDetectorBase,
     HomographyResult,
 )
 
@@ -37,6 +41,10 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         hough_min_line_length: int = 60,
         hough_max_line_gap: int = 25,
         line_cluster_angle_tol: float = 18.0,
+        buffer_size: int = 5,
+        detector: Optional[FeatureDetectorBase] = None,
+        calibrator: Optional[CalibratorBase] = None,
+        scale_corrector: Optional[ScaleCorrector] = None,
     ) -> None:
         super().__init__(
             canny_high=canny_high,
@@ -61,6 +69,19 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         self.reference_scale = reference_scale
         self._last_result: Optional[HomographyResult] = None
         self._cached_H: Optional[np.ndarray] = None
+        self.buffer_size = buffer_size
+        self._homography_buffer: Deque[tuple[int, np.ndarray]] = deque(
+            maxlen=buffer_size
+        )
+
+        self.detector = detector
+        self.calibrator = calibrator
+        self.scale_corrector = scale_corrector
+
+    def set_correctors(self, detector: FeatureDetectorBase, calibrator: CalibratorBase, scale_corrector: ScaleCorrector ) -> None:
+        self.detector = detector
+        self.calibrator = calibrator
+        self.scale_corrector = scale_corrector
 
     def calibrate(
         self,
@@ -282,23 +303,69 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         min_area = (self.pitch_height * self.pitch_width) * 0.25
         return area >= min_area
 
+    def clear_cache(self) -> None:
+        self._cached_H = None
+
+    def _add_to_buffer(self, frame_num: int, H: np.ndarray) -> None:
+        """Añade una homografía válida al buffer."""
+        if H is not None:
+            self._homography_buffer.append((frame_num, H.copy()))
+            logfire.debug(
+                f"[Homography] Buffer actualizado: {len(self._homography_buffer)} homografías"
+            )
+
     def cache_homography(self, result: HomographyResult) -> None:
         if result.is_valid:
             self._cached_H = result.H.copy()
+            self._homography_buffer.append((result.frame_num, self._cached_H.copy()))
             logfire.info(f"[Homography] Cached homography: {self._cached_H}")
         else:
             logfire.warning(
                 "[Homography] Attempted to cache an invalid homography — ignored"
             )
 
-    def clear_cache(self) -> None:
-        self._cached_H = None
+    def _interpolate_homography(self, frame_num: int) -> Optional[np.ndarray]:
+        """
+        Interpola linealmente entre dos homografías del buffer que rodean al frame.
+        Si no hay dos, devuelve la más cercana (extrapolación).
+        """
+        buffer = list(self._homography_buffer)
+        if not buffer:
+            return None
+
+        # Si solo hay una, devolver esa
+        if len(buffer) == 1:
+            return buffer[0][1].copy()
+
+        # Ordenar por frame
+        buffer.sort(key=lambda x: x[0])
+        frames = [f for f, _ in buffer]
+        Hs = [H for _, H in buffer]
+
+        # Si el frame es anterior al primero, devolver el primero
+        if frame_num <= frames[0]:
+            return Hs[0].copy()
+        # Si es posterior al último, devolver el último
+        if frame_num >= frames[-1]:
+            return Hs[-1].copy()
+
+        # Buscar dos frames que rodeen a frame_num
+        for i in range(len(frames) - 1):
+            if frames[i] <= frame_num <= frames[i + 1]:
+                t = (frame_num - frames[i]) / (frames[i + 1] - frames[i])
+                H_interp = (1 - t) * Hs[i] + t * Hs[i + 1]
+                return H_interp
+
+        # Fallback: devolver el más cercano
+        closest_idx = min(range(len(frames)), key=lambda i: abs(frames[i] - frame_num))
+        return Hs[closest_idx].copy()
 
     def project_batch(
         self,
         bboxes: list[tuple[float, float, float, float]],
         H: Optional[np.ndarray] = None,
         use_feet: bool = True,
+        match_id: Optional[int] = None,
     ) -> list[Optional[tuple[float, float]]]:
         if H is not None:
             H_mat = H
@@ -331,7 +398,19 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
             ):
                 results.append((x, y))
             else:
-                results.append(None)
+                # Corregir con scale_corrector si está disponible y match_id existe
+                if self.scale_corrector is not None and match_id is not None:
+                    x_corr, y_corr = self.scale_corrector.correct_point(x, y, match_id)
+                    # Verificar si la corrección lo trajo dentro del campo
+                    if (
+                        -margin <= x_corr <= PITCH_WIDTH + margin
+                        and -margin <= y_corr <= FIELD_HEIGHT + margin
+                    ):
+                        results.append((x_corr, y_corr))
+                    else:
+                        results.append(None)
+                else:
+                    results.append(None)
         return results
 
     def draw_debug(
@@ -376,3 +455,100 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
             cv2.LINE_AA,
         )
         return annotated_frame
+
+    def _ransac_calibrate(
+        self,
+        video_item: VideoItem,
+        camera_scale: float,
+        camera_tilt: float,
+        session: Session,
+    ) -> HomographyResult:
+        """
+        Realiza la calibración con el método RANSAC clásico (código original).
+        Retorna un HomographyResult (puede ser inválido).
+        """
+        h, w = video_item.frame.shape[:2]
+        self.reference_frame_size = (w, h)
+
+        # Código original de calibrate de PitchHomography (extraído)
+        segments = self._detect_lines(video_item.frame)
+        if len(segments) < 6:
+            fallback = self._wall_floor_fallback_line(video_item.frame)
+            logfire.info(f"[Homography] Fallback line detected: {fallback}")
+            if fallback is not None:
+                segments = np.array([fallback], dtype=np.float32)
+
+        segments = self._merge_segments(segments)
+        clusters = self._cluster_lines(segments)
+
+        homography = HomographyResult(
+            reprojection_error=float("inf"),
+            inlier_count=0,
+            is_valid=False,
+            frame_num=video_item.frame_num,
+            match_id=video_item.match_id,
+        )
+        session.add(homography)
+        session.flush()
+
+        candidate_image_pts = self._segments_to_candidates(clusters, w, h)
+        candidate_image_pts = self._cluster_intersections(candidate_image_pts)
+
+        adapted_points = self._transform_predetermined_points(
+            w, h, camera_scale, camera_tilt
+        )
+
+        keypoints = self._build_correspondences(
+            candidate_image_pts, w, h, adapted_points, homography.id
+        )
+        session.add_all(keypoints)
+        session.flush()
+        homography.keypoints = keypoints
+
+        if len(keypoints) < self.min_keypoints:
+            if self._last_result is not None and self._last_result.is_valid:
+                homography.H = self._last_result.H.copy()
+                homography.inlier_count = self._last_result.inlier_count
+                homography.reprojection_error = self._last_result.reprojection_error
+                homography.is_valid = True
+            elif self._cached_H is not None:
+                homography.H = self._cached_H.copy()
+                homography.is_valid = True
+            else:
+                homography.H = np.eye(3)
+                homography.is_valid = False
+            session.flush()
+
+            if homography.is_valid:
+                self.cache_homography(homography)
+
+            return homography
+
+        img_pts = np.array([kp.image_pt for kp in keypoints], dtype=np.float32)
+        fld_pts = np.array([kp.field_pt for kp in keypoints], dtype=np.float32)
+
+        H, mask = cv2.findHomography(
+            img_pts, fld_pts, cv2.RANSAC, self.ransac_threshold
+        )
+        if H is None:
+            homography.H = np.eye(3)
+            homography.inlier_count = 0
+            session.flush()
+            return homography
+
+        inliers = int(mask.sum()) if mask is not None else 0
+        repr_err = _reprojection_error(H, img_pts, fld_pts)
+        geometry_ok = self.validate_homography(H)
+
+        homography.H = H
+        homography.reprojection_error = repr_err
+        homography.inlier_count = inliers
+        homography.is_valid = inliers >= self.min_keypoints and geometry_ok
+
+        session.flush()
+        self._last_result = homography
+
+        if homography.is_valid:
+            self.cache_homography(homography)
+
+        return homography

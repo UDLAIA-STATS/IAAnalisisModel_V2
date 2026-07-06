@@ -1,4 +1,6 @@
 from pathlib import Path
+
+import logfire
 from src.config.configuration import settings
 
 # BASE
@@ -6,6 +8,8 @@ BASE_RES_DIR = Path("./res")
 DATABASE_DIR = BASE_RES_DIR / "database"
 INPUT_VIDEOS_DIR = BASE_RES_DIR / "inputs"
 
+# Addons pnlcalib path
+PNL_CALIB_DIR = Path(Path(__file__).parents[1].as_posix().replace("src", "addons")) / "PnLCalib"
 
 # OUTPUTS
 OUTPUTS_DIR = BASE_RES_DIR / "outputs"
@@ -38,6 +42,9 @@ MODEL_GOALS_PATH = YOLO_MODELS_DIR / str(settings.GOAL_MODEL_NAME)
 DEPTH_MODEL_PATH = MODELS_DIR / str(settings.DEPTH_MODEL_NAME)
 BYTETRACK_CONFIG_PATH = CONFIG_MODELS_DIR / "bytetrack.yaml"
 NUMBER_MODEL_PATH = TROCR_PATH / "number_model.pt"
+
+# WEIGHTS ROUTES
+WEIGHTS_DIR = MODELS_DIR / "weights"
 
 # RETRAINING
 DATASETS_DIR = Path("./retraining", "data")
@@ -73,7 +80,8 @@ def ensure_directories():
         MODELS_BACKUP_DIR,
         CUSTOM_MODELS,
         TIME_REPORTS_DIR,
-        DIAGRAMS_DIR
+        DIAGRAMS_DIR,
+        WEIGHTS_DIR
     ]:
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)

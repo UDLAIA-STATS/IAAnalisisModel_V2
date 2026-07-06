@@ -1,149 +1,183 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+import json
 
 import cv2
 import logfire
 import numpy as np
 from sqlmodel import Session
-from src.entities.models.app.video_item import VideoItem
-from src.entities.utils.homography_utils import _line_intersection, _reprojection_error
-from src.entities.models.homography.homography_models import HomographyResult
-from src.entities.homography.homography_base import HomographyBase
-from src.entities.models.homography import PITCH_WIDTH, FIELD_HEIGHT, FIELD_KEYPOINTS
 
+from src.entities.models.app.video_item import VideoItem
+from src.entities.models.homography.homography_models import (
+    HomographyResult,
+    CalibrationResult,
+)
+from src.entities.homography.homography_base import HomographyBase
+
+KEYPOINT_ID_TO_NAME = {
+    1: "tl_corner",
+    2: "mid_top",
+    3: "tr_corner",
+    4: "lpen_tl",
+    5: "lpen_tr",
+    6: "rpen_tr",
+    7: "rpen_tl",
+    8: "lsix_tl",
+    9: "lsix_tr",
+    10: "rsix_tr",
+    11: "rsix_tl",
+    12: "lgoal_crossbar_l",
+}
+
+def _get_keypoint_name(kp_id: int) -> str:
+    """Devuelve el nombre de campo para un ID de keypoint."""
+    return KEYPOINT_ID_TO_NAME.get(kp_id, f"kp_{kp_id}")
 
 class PitchHomography(HomographyBase):
     """
     Compute and apply a homography from camera frame to a FIFA pitch template.
-
-    Parameters
-    ----------
-    predetermined_points : dict[str, tuple[float, float]]
-        Manually calibrated fallback pixel positions for known field keypoints.
-        Keys must match names in FIELD_KEYPOINTS.
-        Example: {"tl_corner": (120.0, 45.0), "tr_corner": (1160.0, 38.0), ...}
-    min_keypoints : int
-        Minimum number of correspondences required to attempt homography.
-    ransac_threshold : float
-        RANSAC reprojection threshold in pixels.
-    detection_confidence_threshold : float
-        Minimum normalised confidence for a detected keypoint to be preferred
-        over its predetermined fallback.
-    max_reprojection_error : float
-        Maximum acceptable mean reprojection error (pixels). Results above
-        this threshold are flagged as invalid.
-    canny_low, canny_high : int
-        Thresholds for Canny edge detection.
-    hough_threshold : int
-        Accumulator threshold for HoughLinesP.
-    hough_min_line_length : int
-        Minimum line length (pixels) for HoughLinesP.
-    hough_max_line_gap : int
-        Maximum allowed gap (pixels) between line segments for HoughLinesP.
-    line_cluster_angle_tol : float
-        Angle tolerance (degrees) for grouping detected lines into
-        horizontal / vertical / diagonal clusters.
+    Ahora integra detección ML y calibración PnL como primer intento.
     """
 
-    def calibrate(
-        self, video_item, camera_scale, camera_tilt, session, use_cache=False
+    def __init__(
+        self,
+        predetermined_points: dict[str, tuple[float, float]]
     ):
-        h, w = video_item.frame.shape[:2]
-        self.reference_frame_size = (w, h)
+        super().__init__(predetermined_points)
 
+    def calibrate(
+        self,
+        video_item: VideoItem,
+        camera_scale: float,
+        camera_tilt: float,
+        session: Session,
+        use_cache: bool = False,
+    ) -> HomographyResult:
+        h, w = video_item.frame.shape[:2]
+        self.reference_frame_size = (int(w), int(h))
+
+        # 1. Si está en caché y se permite, devolver caché
         if use_cache and self._cached_H is not None:
-            homography = HomographyResult(
-                keypoints=[],
-                match_id=video_item.match_id,
+            logfire.info(f"[Homography] Usando caché para frame {video_item.frame_num}")
+            result = HomographyResult(
+                H_json=json.dumps(self._cached_H.tolist()),
                 reprojection_error=0.0,
                 inlier_count=-1,
                 is_valid=True,
                 frame_num=video_item.frame_num,
+                match_id=video_item.match_id,
+                method_used="cache",
             )
-            homography.H = self._cached_H
-            session.add(homography)
+            session.add(result)
             session.flush()
-            return homography
+            return result
 
-        segments = self._detect_lines(video_item.frame)
-        if len(segments) < 6:
-            fallback = self._wall_floor_fallback_line(video_item.frame)
-            logfire.info(f"[Homography] Fallback line detected: {fallback}")
-            if fallback is not None:
-                segments = np.array([fallback], dtype=np.float32)
+        # 2. Intentar ML + PnL
+        ml_success = False
+        if self.detector is not None and self.calibrator is not None:
+            logfire.info(f"[Homography] Intentando calibración ML+PnL para frame {video_item.frame_num}")
+            try:
+                features = self.detector.detect(video_item.frame)
+                if features is not None:
+                    calib_result = self.calibrator.calibrate(
+                        kp_dict=features['kp_dict'],
+                        lines_dict=features['lines_dict'],
+                        tilt=camera_tilt,
+                        zoom=camera_scale,
+                        image_width=int(w),
+                        image_height=int(h),
+                    )
+                    if calib_result is not None and calib_result.is_valid:
+                        result = self._calibration_result_to_homography_result(
+                            calib_result, video_item, session
+                        )
+                        session.add(result)
+                        session.flush()
+                        self._last_result = result
+                        if result.is_valid:
+                            self.cache_homography(result)
+                        logfire.info(f"[Homography] Calibración ML+PnL exitosa (err={result.reprojection_error:.2f}px)")
+                        return result
+                    else:
+                        logfire.warning("[Homography] ML+PnL falló o resultado inválido")
+                else:
+                    logfire.warning("[Homography] Detector ML no devolvió features")
+            except Exception as e:
+                logfire.error(f"[Homography] Error en ML+PnL: {e}")
 
-        segments = self._merge_segments(segments)
-        clusters = self._cluster_lines(segments)
+        # 3. Si ML+PnL falla, usar RANSAC clásico
+        logfire.info(f"[Homography] Usando RANSAC clásico para frame {video_item.frame_num}")
+        result = self._ransac_calibrate(video_item, camera_scale, camera_tilt, session)
+        if result.is_valid:
+            logfire.info(f"[Homography] RANSAC exitoso (err={result.reprojection_error:.2f}px)")
+            self.cache_homography(result)
+            return result
 
-        homography = HomographyResult(
+        # 4. Si RANSAC falla, intentar interpolación
+        logfire.warning(f"[Homography] RANSAC falló, intentando interpolación/extrapolación")
+        H_interp = self._interpolate_homography(video_item.frame_num)
+
+        if H_interp is not None:
+            H_interp = H_interp / H_interp[2, 2]
+            result = HomographyResult(
+                H_json=json.dumps(H_interp.tolist()),
+                reprojection_error=float("inf"),  # no podemos calcularlo realmente
+                inlier_count=0,
+                is_valid=True,  # lo marcamos como válido aunque sea una aproximación
+                frame_num=video_item.frame_num,
+                match_id=video_item.match_id,
+                method_used="interpolated",
+            )
+            session.add(result)
+            session.flush()
+            self._last_result = result
+            self.cache_homography(result)
+            logfire.info("[Homography] Interpolación exitosa (usando homografía anterior)")
+            return result
+
+        # 5. Si todo falla, devolver una homografía identidad (inválida)
+        logfire.error("[Homography] Todas las estrategias fallaron, devolviendo identidad")
+        result = HomographyResult(
+            H_json=json.dumps(np.eye(3).tolist()),
             reprojection_error=float("inf"),
             inlier_count=0,
             is_valid=False,
             frame_num=video_item.frame_num,
             match_id=video_item.match_id,
+            method_used="identity_fallback",
         )
-        session.add(homography)
+        session.add(result)
         session.flush()
+        return result
 
-        candidate_image_pts = self._segments_to_candidates(clusters, w, h)
-        candidate_image_pts = self._cluster_intersections(candidate_image_pts)
-
-        adapted_points = self._transform_predetermined_points(
-            w, h, camera_scale, camera_tilt
+    def _calibration_result_to_homography_result(
+        self,
+        calib_result: CalibrationResult,
+        video_item: VideoItem,
+        session: Session,
+    ) -> HomographyResult:
+        """Convierte un CalibrationResult a HomographyResult y lo guarda en BD."""
+        result = HomographyResult(
+            H_json=json.dumps(calib_result.H.tolist()),
+            reprojection_error=calib_result.reprojection_error,
+            inlier_count=calib_result.inlier_count,
+            is_valid=calib_result.is_valid,
+            frame_num=video_item.frame_num,
+            match_id=video_item.match_id,
+            intrinsics_json=json.dumps(calib_result.intrinsics.tolist()),
+            distortion_json=json.dumps(calib_result.distortion.tolist()),
+            rotation_matrix_json=json.dumps(calib_result.rotation_matrix.tolist()),
+            position_meters_json=json.dumps(calib_result.position_meters.tolist()),
+            pan_tilt_roll_json=json.dumps({
+                "pan": calib_result.pan_deg,
+                "tilt": calib_result.tilt_deg,
+                "roll": calib_result.roll_deg,
+            }),
+            method_used=calib_result.method_used,
+            line_inlier_count=calib_result.line_inlier_count or 0,
+            scale_estimate=calib_result.scale_estimate,
         )
-
-        keypoints = self._build_correspondences(
-            candidate_image_pts, w, h, adapted_points, homography.id
-        )
-        session.add_all(keypoints)
-        session.flush()
-        homography.keypoints = (
-            keypoints
-        )
-
-
-
-        if len(keypoints) < self.min_keypoints:
-            if self._last_result is not None and self._last_result.is_valid:
-                homography.H = self._last_result.H.copy()
-                homography.inlier_count = self._last_result.inlier_count
-                homography.reprojection_error = self._last_result.reprojection_error
-                homography.is_valid = True
-            elif self._cached_H is not None:
-                homography.H = self._cached_H.copy()
-                homography.is_valid = True
-            else:
-                homography.H = np.eye(3)
-                homography.is_valid = False
-            session.flush()
-            return homography
-
-        img_pts = np.array([kp.image_pt for kp in keypoints], dtype=np.float32)
-        fld_pts = np.array([kp.field_pt for kp in keypoints], dtype=np.float32)
-
-        H, mask = cv2.findHomography(
-            img_pts, fld_pts, cv2.RANSAC, self.ransac_threshold
-        )
-        if H is None:
-            homography.H = np.eye(3)
-            homography.inlier_count = 0
-            session.flush()
-            return homography
-
-        inliers = int(mask.sum()) if mask is not None else 0
-        repr_err = _reprojection_error(H, img_pts, fld_pts)
-        geometry_ok = self.validate_homography(H)
-
-        homography.H = H
-        homography.reprojection_error = repr_err
-        homography.inlier_count = inliers
-        homography.is_valid = inliers >= self.min_keypoints and geometry_ok
-
-        session.flush()
-        self._last_result = homography
-        return homography
+        return result
 
 
 _predetermined: dict[str, tuple[float, float]] = {
@@ -158,6 +192,5 @@ _predetermined: dict[str, tuple[float, float]] = {
     "rpen_tr": (1138.0, 178.0),
     "rpen_br": (1138.0, 522.0),
 }
-
 
 pitch_homography = PitchHomography(_predetermined)

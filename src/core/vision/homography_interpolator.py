@@ -1,18 +1,20 @@
 import numpy as np
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Optional
 
 from src.config.constants import PITCH_WIDTH, PITCH_LENGTH
 from src.core.repository.homography_repository import HomographyRepository
 from src.entities.models.homography import CleanHomographyFrame
+from src.core.vision.correction.scale_corrector import ScaleCorrector
 
 
 @dataclass
 class ProjectedPosition:
     x_meters: float
     y_meters: float
-    source: Literal["keyframe", "interpolated", "extrapolated", "clipped", "invalid"]
+    source: Literal["keyframe", "interpolated", "extrapolated", "clipped", "invalid", "scale_corrected"]
     ref_frames: tuple[int, int]
+    is_valid: bool = True
 
 
 class HomographyInterpolator:
@@ -28,13 +30,15 @@ class HomographyInterpolator:
     SOFT_MARGIN = 2.0  # Tolerancia para clamps suaves (ej. 2m fuera)
     HARD_LIMIT = 10.0
 
-    def __init__(self, clean_frames: list[CleanHomographyFrame]):
+    def __init__(self, match_id: int, session, clean_frames: list[CleanHomographyFrame]):
         if not clean_frames:
             raise ValueError("Cannot build interpolator with no keyframes")
 
         sorted_frames = sorted(clean_frames, key=lambda f: f.frame_num)
         self._frames = np.array([f.frame_num for f in sorted_frames])
         self._matrices = np.array([f.H for f in sorted_frames])
+        self._scale_corrector = ScaleCorrector(session)
+        self.match_id = match_id
 
     def get_H(self, frame: int) -> tuple[np.ndarray, str, tuple[int, int]]:
         frames = self._frames
@@ -85,11 +89,11 @@ class HomographyInterpolator:
         )
 
         if inside_soft:
-            x_m = np.clip(x_m, 0.0, PITCH_LENGTH)
-            y_m = np.clip(y_m, 0.0, PITCH_WIDTH)
-            if x_m != p[0] or y_m != p[1]:
+            x_clip = np.clip(x_m, 0.0, PITCH_LENGTH)
+            y_clip = np.clip(y_m, 0.0, PITCH_WIDTH)
+            if x_clip != x_m or y_clip != y_m:
                 source = "clipped"
-            return ProjectedPosition(x_m, y_m, source, ref)  # type: ignore
+            return ProjectedPosition(x_clip, y_clip, source, ref, is_valid=True)
 
         if inside_hard:
             x_clamped = np.clip(x_m, 0.0, PITCH_LENGTH)
@@ -102,13 +106,25 @@ class HomographyInterpolator:
                 y_clamped = 0.0
             elif y_m > PITCH_WIDTH:
                 y_clamped = PITCH_WIDTH
-            return ProjectedPosition(x_clamped, y_clamped, "clipped", ref)
+            return ProjectedPosition(x_clamped, y_clamped, "clipped", ref, is_valid=False)
 
-        return ProjectedPosition(x_m, y_m, source, ref)  # type: ignore
+        if self._scale_corrector is not None:
+            x_corr, y_corr = self._scale_corrector.correct_point(x_m, y_m, self.match_id)
+
+            if (
+                -self.SOFT_MARGIN <= x_corr <= PITCH_LENGTH + self.SOFT_MARGIN
+                and -self.SOFT_MARGIN <= y_corr <= PITCH_WIDTH + self.SOFT_MARGIN
+            ):
+                return ProjectedPosition(x_corr, y_corr, "scale_corrected", ref, is_valid=True)
+            else:
+                return ProjectedPosition(x_corr, y_corr, "scale_corrected", ref, is_valid=False)
+        else:
+            return ProjectedPosition(x_m, y_m, "invalid", ref, is_valid=False)
 
     @classmethod
     def from_match(cls, match_id: int, session) -> "HomographyInterpolator":
         frames = HomographyRepository.get_clean_homographies(
             match_id=match_id, session=session, max_reprojection_error=3.0
         )
-        return cls(frames)
+        interpolator = cls(match_id, session, frames)
+        return interpolator

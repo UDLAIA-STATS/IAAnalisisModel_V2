@@ -21,6 +21,7 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
     name = "Constant Conversion Calculator"
     number_step = 4
     last_frame_calculated = 0
+    last_kp_calculated = 0
     frame_step = 30
 
     def execute(self, session: Session, **kwargs) -> bool:
@@ -35,17 +36,20 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
         actual_pixel_conversion = pixel_conversion_handler.calculate_value(video_item.frame)
         actual_tilt = tilt_detector.get_current_tilt()
         logfire.info(f"[ConversionCalculator] Actual tilt: {actual_tilt}")
-        result = pitch_homography.calibrate(
+        
+        if self.last_kp_calculated == 0 or self.last_kp_calculated + self.frame_step * 3 <= video_item.frame_num:
+            result = pitch_homography.calibrate(
             video_item,
             actual_scale,
             actual_tilt,
             session,
         )
 
-        video_item.annotated_frame = pitch_homography.draw_debug(
-            video_item.annotated_frame, result
-        )
-        manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
+            video_item.annotated_frame = pitch_homography.draw_debug(
+                video_item.annotated_frame, result
+            )
+            manager.write(video_item.annotated_frame, video_item.frame_num, save_frame=True)
+            self.last_kp_calculated = video_item.frame_num
 
         try:
             for state in states:

@@ -16,7 +16,7 @@ from src.config.routes import ensure_directories, validate_model
 async def lifespan(app: FastAPI):
     print("Application is starting...")
     print("Creating tables...")
-    connection_manager.create_database()
+    connection_manager.create_database(False)
     ensure_directories()
     validate_model()
     logfire.configure()

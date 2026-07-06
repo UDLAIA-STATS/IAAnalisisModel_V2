@@ -30,12 +30,13 @@ class BallTracker(DetectorBase):
     @override
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
-        return self.model(
+        return self.model.predict(
             frame,
             conf=0.1,
             verbose=False,
             iou=0.45,
             device=self.device,
+            augment=True
         )
 
     @override
