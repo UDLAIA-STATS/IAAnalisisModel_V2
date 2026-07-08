@@ -1,7 +1,7 @@
 from enum import StrEnum
 
 
-class States(StrEnum):
+class StatesModel(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"

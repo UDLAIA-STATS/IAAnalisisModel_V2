@@ -3,7 +3,7 @@ import traceback
 import logfire
 from sqlmodel import SQLModel, Session, QueuePool, create_engine
 
-from config.configuration import settings
+from src.config.configuration import settings
 
 
 class ConnectionManager:
@@ -29,7 +29,6 @@ class ConnectionManager:
 
             self.engine = create_engine(
                 database_url,
-                connect_args={"check_same_thread": False, "timeout": 30},
                 pool_pre_ping=True,
                 poolclass=QueuePool,
                 pool_size=10,
@@ -53,7 +52,7 @@ class ConnectionManager:
         Returns:
             Session: Sesion de base de datos.
         """
-        return Session(self.engine, expire_on_commit=False, autoflush=False)
+        return Session(self.engine, expire_on_commit=False)
 
     def dispose(self):
         self.engine.dispose()

@@ -5,7 +5,7 @@ from sqlmodel import Field, SQLModel
 
 
 class NumericIdModel(SQLModel):
-    id: int | None = Field(primary_key=True, index=True, default=None, sa_column_kwargs={"autoincrement": True})
+    id: int = Field(primary_key=True, index=True, default=None, sa_column_kwargs={"autoincrement": True})
 
 
 class UUIDModel(SQLModel):
@@ -17,8 +17,8 @@ class AuditTable(SQLModel):
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column_kwargs={"onupdate": datetime.now(timezone.utc)},
-        )
+    )
 
 
-class AuditTableCompletedTable(AuditTable, table=True):
+class AuditTableCompletedTable(AuditTable):
     completed_at: datetime | None = Field(default=None, nullable=True)

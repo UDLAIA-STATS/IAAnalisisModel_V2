@@ -22,4 +22,18 @@ settings.toml
 *.jpeg
 *.sql
 *.pt
+*.task
+*.json
+*.csv
+*.mp4
+*.mkv
+*.jpg
+*.png
 
+res/outputs/annotated/
+res/outputs/diagrams/
+res/outputs/images/
+res/outputs/videos/
+res/models/
+res/inputs/
+res/database/
