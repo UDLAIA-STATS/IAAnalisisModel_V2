@@ -1,10 +1,12 @@
 from contextlib import asynccontextmanager
+import signal
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logfire
 import uvicorn
 
+from src.entities.utils.spark_instance import graceful_shutdown
 from src.core.database import connection_manager
 from src.presentation.api.v1.analyze_router import router as analyze_router
 from src.config.routes import ensure_directories, validate_model
@@ -14,11 +16,16 @@ from src.config.routes import ensure_directories, validate_model
 async def lifespan(app: FastAPI):
     print("Application is starting...")
     print("Creating tables...")
-    connection_manager.create_database()
+    connection_manager.create_database(False)
     ensure_directories()
     validate_model()
+    logfire.configure()
+    logfire.instrument_fastapi(app)
+    logfire.notice("Application started, ready to receive requests")
     yield
     connection_manager.dispose()
+    signal.signal(signal.SIGTERM, graceful_shutdown)
+    signal.signal(signal.SIGINT, graceful_shutdown)
     print("Application is shutting down...")
 
 
@@ -31,9 +38,6 @@ def run_app() -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
-
-    logfire.configure()
-    logfire.instrument_fastapi(app)
 
     app.include_router(analyze_router)
     return app

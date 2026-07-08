@@ -1,9 +1,13 @@
-from typing import Sequence, Tuple
+from functools import lru_cache
+from typing import List, Sequence, Tuple
 
 import logfire
-from sqlmodel import Session, select
+import numpy as np
+from sqlmodel import Session, col, func, select
 
 from src.entities.models.soccer.player_model import PlayerModel, PlayerState
+from src.entities.models.soccer import DepthHistory
+from src.core.repository.depth_history_repository import DepthRepository
 
 
 class PlayerStatesRepository:
@@ -11,13 +15,17 @@ class PlayerStatesRepository:
     def get_state_by_track_id(
         frame_number: int, match_id: int, track_id: int, session: Session
     ) -> Tuple[PlayerModel, PlayerState] | Tuple[None, None] | Tuple[PlayerModel, None]:
-        player_query = select(PlayerModel).where(PlayerModel.match_id == match_id, PlayerModel.track_id == track_id)
+        player_query = select(PlayerModel).where(
+            PlayerModel.match_id == match_id, PlayerModel.track_id == track_id
+        )
         player = session.exec(player_query).first()
 
         if player is None:
             return None, None
 
-        state_query = select(PlayerState).where(PlayerState.player_id == player.id, PlayerState.frame_number == frame_number)
+        state_query = select(PlayerState).where(
+            PlayerState.player_id == player.id, PlayerState.frame_number == frame_number
+        )
         state = session.exec(state_query).first()
 
         if state is None:
@@ -31,11 +39,20 @@ class PlayerStatesRepository:
         return session.exec(query).first()
 
     @staticmethod
-    def get_states_by_frame(match_id: int, frame_number: int, session: Session) -> Sequence[PlayerState]:
+    def get_states_by_frame(
+        match_id: int, frame_number: int, session: Session
+    ) -> Sequence[PlayerState]:
         query = (
             select(PlayerState)
-            .join(target=PlayerModel, onclause=PlayerState.player_id == PlayerModel.id, full=True)
-            .where(PlayerState.frame_number == frame_number, PlayerModel.match_id == match_id)
+            .join(
+                target=PlayerModel,
+                onclause=col(PlayerState.player_id) == col(PlayerModel.id),
+                full=True,
+            )
+            .where(
+                PlayerState.frame_number == frame_number,
+                PlayerModel.match_id == match_id,
+            )
         )
         results = session.exec(query).all()
 
@@ -47,34 +64,142 @@ class PlayerStatesRepository:
         return results
 
     @staticmethod
-    def get_states_by_frame_range(match_id: int, min_frame: int, max_frame: int, session: Session) -> Sequence[PlayerState]:
+    def get_states_by_frame_range(
+        match_id: int, min_frame: int, max_frame: int, session: Session
+    ) -> Sequence[PlayerState]:
         states = session.exec(
             select(PlayerState)
-            .join(target=PlayerModel, onclause=PlayerState.player_id == PlayerModel.id, full=True)
-            .where(PlayerState.frame_number >= min_frame, PlayerState.frame_number <= max_frame, PlayerModel.match_id == match_id)
-            .order_by(PlayerState.frame_number)).all()
+            .join(
+                target=PlayerModel,
+                onclause=col(PlayerState.player_id) == col(PlayerModel.id),
+                full=True,
+            )
+            .where(
+                PlayerState.frame_number >= min_frame,
+                PlayerState.frame_number <= max_frame,
+                PlayerModel.match_id == match_id,
+            )
+            .order_by(col(PlayerState.frame_number))
+        ).all()
 
         return states
-    
+
     @staticmethod
     def merge_states(keep_player_id: int, remove_player_id: int, session: Session):
         states = session.exec(
-            select(PlayerState)
-            .where(PlayerState.player_id == remove_player_id)
+            select(PlayerState).where(PlayerState.player_id == remove_player_id)
         ).all()
 
-        logfire.info(f"[PlayerStatesRepository] Merging {len(states)} states of player {remove_player_id} into player {keep_player_id}")
+        depths = DepthRepository.get_depths_by_player(
+            match_id=states[0].player.match_id,
+            player_id=remove_player_id,
+            session=session,
+        )
+        for depth in depths:
+            depth = session.get(DepthHistory, depth.id)
+            depth.player_id = keep_player_id  # type: ignore
+            session.add(depth)
+            session.flush()
 
         for state in states:
             state.player_id = keep_player_id
             session.add(state)
             session.flush()
 
-        duplicate_player = session.get(
-            PlayerModel, remove_player_id
-        )
+        duplicate_player = session.get(PlayerModel, remove_player_id)
 
         if duplicate_player:
             session.delete(duplicate_player)
 
         session.flush()
+
+    @staticmethod
+    def update_state(state: PlayerState, session: Session):
+        original_state = session.get(PlayerState, state.id)
+
+        if not original_state:
+            logfire.error(
+                f"PlayerStatesRepository.update_state: No state found for id {state.id} in database"
+            )
+            raise ValueError(
+                f"PlayerStatesRepository.update_state: No state found for id {state.id} in database"
+            )
+
+        original_state.sqlmodel_update(state.model_dump(exclude_unset=True))
+        session.flush()
+
+    @staticmethod
+    def get_max_aparitions(match_id: int, session: Session) -> int:
+        aparitions = func.count(col(PlayerState.player_id)).label("aparitions")
+
+        query = (
+            select(aparitions)
+            .select_from(PlayerState)
+            .join(
+                target=PlayerModel,
+                onclause=col(PlayerState.player_id) == col(PlayerModel.id),
+            )
+            .where(PlayerModel.match_id == match_id)
+            .group_by(col(PlayerState.player_id))
+            .order_by(aparitions.desc())
+        )
+        appearance = session.exec(query).all()
+        logfire.debug(
+            f"PlayerStatesRepository.get_max_aparitions: aparitions: {appearance}"
+        )
+        appearance_np = np.array(appearance)
+        max_appearance = appearance_np.max()
+
+        logfire.info(
+            f"PlayerStatesRepository.get_max_aparitions: aparitions: {max_appearance}"
+        )
+
+        if max_appearance is None:
+            max_appearance = int(180)
+
+        return int(max_appearance * 0.38)
+
+    @staticmethod
+    def get_states_appearances(
+        match_id: int, limit_appearance: int, session: Session
+    ) -> Tuple[List[PlayerState], List[PlayerState]]:
+
+        appearances_subquery = (
+            select(
+                PlayerState.player_id,
+                func.count(col(PlayerState.id)).label("appearances"),
+            )
+            .join(PlayerModel, col(PlayerState.player_id) == col(PlayerModel.id))
+            .where(PlayerModel.match_id == match_id)
+            .group_by(col(PlayerState.player_id))
+            .subquery()
+        )
+
+        below_player_ids = select(appearances_subquery.c.player_id).where(
+            appearances_subquery.c.appearances <= limit_appearance
+        )
+
+        correct_player_ids = select(appearances_subquery.c.player_id).where(
+            appearances_subquery.c.appearances > limit_appearance
+        )
+
+        below_states = session.exec(
+            select(PlayerState).where(col(PlayerState.player_id).in_(below_player_ids))
+        ).all()
+
+        correct_states = session.exec(
+            select(PlayerState).where(
+                col(PlayerState.player_id).in_(correct_player_ids)
+            )
+        ).all()
+
+        logfire.notice(
+            f"[PlayerStatesRepository.get_states_appearances] below states: {len(below_states)}"
+        )
+
+        logfire.notice(
+            f"[PlayerStatesRepository.get_states_appearances] correct states: {len(correct_states)}"
+        )
+
+        return list(below_states), list(correct_states)
+

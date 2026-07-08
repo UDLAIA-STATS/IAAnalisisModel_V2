@@ -1,12 +1,28 @@
 import numpy as np
 
-
 def extract_player_torso(frame: np.ndarray, bbox: np.ndarray) -> np.ndarray:
-    x1, y1, x2, y2 = bbox
-    h, w = frame.shape[:2]
-    new_y1 = int(y1 + h * 0.15)
-    new_y2 = int(y1 + h * 0.50)
-    new_x1 = int(x1 + w * 0.25)
-    new_x2 = int(x2 - w * 0.25)
+    x1, y1, x2, y2 = bbox.astype(int)
 
-    return frame[new_y1:new_y2, new_x1:new_x2]
+    crop = frame[y1:y2, x1:x2]
+
+    if crop.size == 0:
+        return crop
+
+    h, w = crop.shape[:2]
+
+    if h < 40 or w < 20:
+        return crop
+
+    x_margin = max(2, int(w * 0.12))
+    top_margin = max(2, int(h * 0.12))
+    bottom_cut = max(2, int(h * 0.40))
+
+    torso = crop[
+        top_margin : h - bottom_cut,
+        x_margin : w - x_margin,
+    ]
+
+    if torso.shape[0] < 10 or torso.shape[1] < 10:
+        return crop
+
+    return torso

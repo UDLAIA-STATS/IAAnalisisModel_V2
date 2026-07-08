@@ -11,22 +11,76 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     track_id: int = Field(index=True)
     team_id: int = Field(index=True, default=None, nullable=True)
     team_color: str = Field(index=True, default=None, nullable=True)
+
     goals: int = Field(default=0)  # Goles del jugador
     shirt_number: int = Field(nullable=True, default=None)
-    crop_path: str = Field(nullable=True, default=None)
+    ball_possession_time: float = Field(default=0)
 
-    states: list["PlayerState"] = Relationship(back_populates="player")
-    numbers: list["PlayerNumbers"] = Relationship(back_populates="player")
+    crop_path: str = Field(nullable=True, default=None)
+    heatmap_path: str = Field(nullable=True, default=None)
+    team_heatmap_path: str = Field(nullable=True, default=None)
+    movement_trajectories_path: str = Field(nullable=True, default=None)
+
+    states: list["PlayerState"] = Relationship(back_populates="player", cascade_delete=True)
+    numbers: list["PlayerNumbers"] = Relationship(back_populates="player", cascade_delete=True)
+    depth_history: list["DepthHistory"] = Relationship(back_populates="player", cascade_delete=True)
 
 
 class PlayerNumbers(NumericIdModel, AuditTable, table=True):
     __tablename__: str = "players_numbers"  # type: ignore
     player_id: int = Field(foreign_key="players.id", index=True)
-    number: int
+    frame_number: int = Field(index=True)
+    number: int = Field(nullable=True, default=None)
+    tens_none_prob: float
     confidence: float
-    frame_number: int
+    visible_prob: float
+    tens_pred: int
+    tens_prob: float
+    units_pred: int
+    units_prob: float
 
     player: PlayerModel = Relationship(back_populates="numbers")
+
+
+class DepthHistory(NumericIdModel, AuditTable, table=True):
+    __tablename__ = "depth_history"  # type: ignore
+
+    match_id: int = Field(index=True)
+    frame_num: int = Field(index=True)
+    timestamp: float = Field(index=True, decimal_places=10)
+
+    depth: float = Field(
+        default=1.0,
+        decimal_places=6,
+        description="Profundidad del campo en relacion con la camara",
+    )
+    pixels_to_meters: float = Field(
+        default=1.0, decimal_places=6, description="Conversion de pixeles a metros"
+    )
+    camera_scale: float = Field(
+        default=1.0,
+        decimal_places=6,
+        description="Escala de la camara (nivel de zoom o aumento focal)",
+    )
+    camera_tilt: float = Field(
+        default=0.0,
+        decimal_places=6,
+        description="Inclinacion de la camara en grados",
+    )
+    player_id: int = Field(
+        foreign_key="players.id",
+        index=True,
+        description="Id del jugador al que pertenece la constante",
+    )
+
+    constant: float = Field(
+        default=1.0,
+        decimal_places=6,
+        description="Constante de conversion, resultado de depth * pixels_to_meters, camera scale is already considered in depth",
+    )
+
+    player: "PlayerModel" = Relationship(back_populates="depth_history")
+
 
 
 class PlayerState(NumericIdModel, AuditTable, BBoxModel, SoccerFrameData, DynamicMovementModel, table=True):

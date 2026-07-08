@@ -1,5 +1,7 @@
+from datetime import datetime
 from typing import List
 
+from pydantic import BaseModel
 from sqlmodel import Field, Relationship
 from src.entities.models.base_models import AuditTableCompletedTable, NumericIdModel, UUIDModel
 from src.entities.types.states import StatesModel
@@ -21,6 +23,26 @@ class Task(UUIDModel, AuditTableCompletedTable, table=True):
     match_id: int = Field(index=True)
     video_name: str = Field(index=True)
     general_state: StatesModel = Field(index=True, default=StatesModel.PENDING)
-    user_id: int
+    report_url: str = Field(default="")
+    recognition_chart_key: str = Field(default="")
+    confidence_chart_key: str = Field(default="")
+    persistence_chart_key: str = Field(default="")
+    nickname: str
 
     steps: List[TaskStep] = Relationship(back_populates="task", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+
+
+
+class TaskRead(BaseModel):
+    match_id: int = Field(index=True)
+    video_name: str = Field(index=True)
+    general_state: StatesModel = Field(index=True, default=StatesModel.PENDING)
+    report_url: str = Field(default="")
+    recognition_chart_key: str = Field(default="")
+    confidence_chart_key: str = Field(default="")
+    persistence_chart_key: str = Field(default="")
+    nickname: str
+    created_at: datetime
+    updated_at: datetime
+
+    steps: List[TaskStep] = []
