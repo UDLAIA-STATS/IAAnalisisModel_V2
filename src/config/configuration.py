@@ -1,3 +1,5 @@
+import os
+
 from dynaconf import Dynaconf
 
 
@@ -6,3 +8,6 @@ settings = Dynaconf(
     environments=True,
     envvar_prefix="APP",
 )
+
+os.environ["USE_CUDA"] = "0"
+os.environ["CUDA_LAUNCH_BLOCKING"] = "1"

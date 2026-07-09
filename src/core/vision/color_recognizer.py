@@ -20,7 +20,7 @@ class ColorRecognizer(ColorRecognizerBase):
         players = PlayerRepository.get_players_by_match_id(match_id, session)
 
         if not players:
-            logfire.warning(f"[ColorRecognizer] No players found for match {match_id}")
+            # logfire.warning(f"[ColorRecognizer] No players found for match {match_id}")
             return
 
         valid_players = self.validate_players(list(players), session)
@@ -116,12 +116,12 @@ class ColorRecognizer(ColorRecognizerBase):
                 for player_id in component
             ]
 
-            logfire.info(
-                f"[ColorRecognizer] Component {component_index}: "
-                f"{len(component)} players | "
-                f"Tracks={track_ids} | "
-                f"Normalized color={normalized_color}"
-            )
+            # logfire.info(
+            #     f"[ColorRecognizer] Component {component_index}: "
+            #     f"{len(component)} players | "
+            #     f"Tracks={track_ids} | "
+            #     f"Normalized color={normalized_color}"
+            # )
 
             for player_id in component:
                 player = player_lookup[player_id]
@@ -188,19 +188,19 @@ class ColorRecognizer(ColorRecognizerBase):
             x1, y1, x2, y2 = state.x1, state.y1, state.x2, state.y2
 
             if x1 is None or y1 is None or x2 is None or y2 is None:
-                logfire.error(
-                    f"[ColorRecognition] No coordinates or coordinates incompleted for "
-                    f"player {state.player.track_id} in frame {video_item.frame_num} in match {video_item.match_id}"
-                )
+                # logfire.error(
+                #     f"[ColorRecognition] No coordinates or coordinates incompleted for "
+                #     f"player {state.player.track_id} in frame {video_item.frame_num} in match {video_item.match_id}"
+                # )
                 continue
 
             crop = extract_player_torso(crop, np.array([x1, y1, x2, y2]))
 
             if crop.shape[0] == 0 or crop.shape[1] == 0:
-                logfire.error(
-                    f"[ColorRecognition] No coordinates or coordinates incompleted for "
-                    f"player {state.player.track_id} in frame {video_item.frame_num} in match {video_item.match_id}"
-                )
+                # logfire.error(
+                #     f"[ColorRecognition] No coordinates or coordinates incompleted for "
+                #     f"player {state.player.track_id} in frame {video_item.frame_num} in match {video_item.match_id}"
+                # )
                 continue
 
             rgb, hex = self.extract_color(crop)

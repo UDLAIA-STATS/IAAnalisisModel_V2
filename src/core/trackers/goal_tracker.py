@@ -70,7 +70,7 @@ class GoalTracker(DetectorBase):
                 labels.append(f"Goal | {dt.confidence:.2f}")
 
             video_item.annotated_frame = annotator.annotate(
-                video_item.frame, filtered_detections, labels
+                video_item.annotated_frame, filtered_detections, labels
             )
 
         return detections_map

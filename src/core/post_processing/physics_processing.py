@@ -62,8 +62,8 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                         state.y2,
                         state.frame_number,
                     )
-                    state.dx_meters = curr_pos.x_meters
-                    state.dy_meters = curr_pos.y_meters
+                    state.dx_meters = float(curr_pos.x_meters)
+                    state.dy_meters = float(curr_pos.y_meters)
 
                     prev_pos = interpolator.project(
                         prev_state.x1,
@@ -72,8 +72,8 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                         prev_state.y2,
                         prev_state.frame_number,
                     )
-                    prev_state.dx_meters = prev_pos.x_meters
-                    prev_state.dy_meters = prev_pos.y_meters
+                    prev_state.dx_meters = float(prev_pos.x_meters)
+                    prev_state.dy_meters = float(prev_pos.y_meters)
 
                 # if prev_state.dx_meters is not None and state.dx_meters is not None:
                 #     jump_distance = np.sqrt(

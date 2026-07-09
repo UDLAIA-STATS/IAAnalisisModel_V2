@@ -1,7 +1,9 @@
 from pathlib import Path
 from typing import List, Sequence, Union, override
+import cv2
 import logfire
 import numpy as np
+from ultralytics import YOLO
 from ultralytics.engine.results import Results
 from supervision.detection.core import Detections
 
@@ -29,19 +31,37 @@ class PlayerTracker(DetectorBase):
         self.classes = {0: player_annotator}
         self.types_map = {0: PlayerModel}
 
+
+    @override
+    def __init_model__(self, model: Path, half: bool = False):
+        self.model: YOLO = YOLO("yolo26x.pt")
+
+        if model.suffix == ".pt":
+            self.model.to(self.device)
+            self.model.fuse()
+
+        if half:
+            self.model.half()
+
     @override
     def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
-        return self.model.track(
+        tracks = self.model.track(
             frame,
             tracker=self.tracker_config_file,
             persist=True,
-            conf=0.15,
+            conf=0.1,
             iou=0.6,
             verbose=False,
-            imgsz=1920,
             device=self.device,
+            # stream=True,
+            augment=True,
+            agnostic_nms=True,
+            end2end=True
         )
+
+        logfire.info(f"[PlayerTracker] Number of tracks: {len(list(tracks))}")
+        return tracks
 
     @override
     def extract_detections(
@@ -96,6 +116,8 @@ class PlayerTracker(DetectorBase):
                     player_crop = video_item.frame.copy()[
                         int(y1) : int(y2), int(x1) : int(x2)
                     ]
+                    h, w = video_item.frame.shape[:2]
+                    player_crop = cv2.resize(player_crop, (h // 2, w // 2))
                     image_name = f"{video_item.match_id}_{video_item.frame_num}_{track_data.track_id}"
                     key = files_repository.generate_key(
                         match_id=video_item.match_id,

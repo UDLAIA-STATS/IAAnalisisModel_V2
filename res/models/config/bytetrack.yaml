@@ -1,7 +1,31 @@
-tracker_type: bytetrack
-track_high_thresh: 0.6
+tracker_type: tracktrack
+
+track_buffer: 180
+track_high_thresh: 0.65
 track_low_thresh: 0.1
-new_track_thresh: 0.68
-track_buffer: 160
-match_thresh: 0.73
+new_track_thresh: 0.6
+match_thresh: 0.65
 fuse_score: True
+
+iou_weight: 0.45
+reid_weight: 0.4
+
+conf_weight: 0.35
+angle_weight: 0.4
+penalty_p: 0.3
+penalty_q: 0.4
+
+reduce_step: 0.3
+
+tai_thr: 0.45
+min_track_len: 1
+lost_match_thr: 0.35
+
+with_reid: True
+gmc_method: sparseOptFlow
+model: yolo26m-cls.pt
+
+
+
+# proximity_thresh: 0.1
+# appearance_thresh: 0.2

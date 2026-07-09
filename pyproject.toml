@@ -3,7 +3,7 @@ name = "proyecto-capstone-model-v2"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.8, <3.14"
 dependencies = [
     "boto3>=1.43.13",
     "botocore>=1.43.13",
@@ -28,17 +28,25 @@ dependencies = [
     "ultralytics>=8.4.47",
     "uvicorn>=0.46.0",
     "pnlcalib",
+    "sam3",
     "lsq-ellipse>=2.2.1",
+    "httpx>=0.28.1",
 ]
 
 [tool.uv.sources]
 pnlcalib = { workspace = true }
+sam3 = { workspace = true }
 
 [tool.uv.workspace]
 members = [
     "addons/PnLCalib",
+    "addons/sam3",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.15.13",
+]
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -123,8 +131,3 @@ docstring-code-format = false
 # This only has an effect when the `docstring-code-format` setting is
 # enabled.
 docstring-code-line-length = 120
-
-[dependency-groups]
-dev = [
-    "ruff>=0.15.13",
-]

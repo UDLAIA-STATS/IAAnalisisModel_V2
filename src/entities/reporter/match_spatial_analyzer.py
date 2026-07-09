@@ -447,7 +447,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             ax.set_facecolor(self._FIELD_COLOR)
 
             track_ids = sorted(valid_players["track_id"].unique())
-            cmap = plt.cm.get_cmap("tab20")
+            cmap = plt.get_cmap("tab20")
             fallback_colors = [cmap(i % 20) for i in range(len(track_ids))]
 
             for idx, track_id in enumerate(track_ids):

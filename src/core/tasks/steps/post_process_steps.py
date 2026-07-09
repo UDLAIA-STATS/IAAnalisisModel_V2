@@ -64,7 +64,7 @@ class ValidationProcess:
             number_postprocessing.process(request.match_id, session)
             ball_possession_analyzer.analyze(request.match_id, session)
 
-            player_crop_validator.validate_match(request.match_id, session)
+            # player_crop_validator.validate_match(request.match_id, session)
 
             validate_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(validate_step, session)

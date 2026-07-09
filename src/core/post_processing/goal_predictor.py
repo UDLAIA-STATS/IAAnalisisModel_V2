@@ -66,6 +66,7 @@ class GoalPostValidator(GoalValidatorBase):
             return
 
         clustered_df = cluster_model.transform(featured_df)
+        clustered_df = clustered_df.withColumnRenamed("prediction", "cluster")
 
         cluster_counts = clustered_df.groupBy("cluster").agg(count("*").alias("cnt"))
         valid_clusters = (
@@ -101,27 +102,21 @@ class GoalPostValidator(GoalValidatorBase):
             ),
         )
 
-        # Por cada (cluster, frame), elegir el de menor distancia al centroide
         w = Window.partitionBy("cluster", "frame_number").orderBy(
             col("dist_to_center").asc()
         )
         ranked = final_df.withColumn("rn", row_number().over(w))
         winners = ranked.filter(col("rn") == 1).drop("rn")
 
-        # 7. IDs ganadores
         winner_ids = {row.id for row in winners.select("id").collect()}
         logfire.info(
             f"[GoalPostValidator] Selected {len(winner_ids)} real post detections"
         )
 
-        # 8. Eliminar los no ganadores
         self._delete_non_winners(match_id, winner_ids, session)
 
         logfire.info(f"[GoalPostValidator] Validation completed for match {match_id}")
 
-    # -------------------------------------------------------------------------
-    # Métodos auxiliares
-    # -------------------------------------------------------------------------
 
     def _build_posts_dataframe(self, posts: List[GoalModel]) -> DataFrame:
         rows = []

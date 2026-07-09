@@ -12,14 +12,9 @@ from pyspark.sql.functions import (
     pow,
     struct,
     min as sql_min,
+    udf,
 )
-from pyspark.sql.types import (
-    FloatType,
-    IntegerType,
-    StringType,
-    StructType,
-    StructField,
-)
+
 
 from sqlmodel import Session
 
@@ -143,7 +138,7 @@ class PlayerValidator(PlayerValidatorBase):
             )
             .withColumn(
                 "positional_iou",
-                self._calculate_iou_diff(
+                bbox_iou_udf(
                     col("incorrect_first_x1"),
                     col("incorrect_first_y1"),
                     col("incorrect_first_x2"),
@@ -156,7 +151,7 @@ class PlayerValidator(PlayerValidatorBase):
             )
             .filter(col("positional_iou") > self.IOU_THRESHOLD)
             .filter(
-                self._color_dist_expr(
+                color_distance_udf(
                     col("incorrect_avg_color"), col("correct_avg_color")
                 )
                 < self.MAX_COLOR_DISTANCE
@@ -254,12 +249,8 @@ class PlayerValidator(PlayerValidatorBase):
         """Spark expression for frame overlap check."""
         return greatest(fs_a, fs_b) <= least(fe_a, fe_b)
 
-    def _color_dist_expr(self, color_a, color_b):
-        """Spark UDF call for color distance."""
-        return color_distance_udf(color_a, color_b)
-
     def _position_dist_expr(self, cx1, cy1, cx2, cy2):
-        """Spark UDF call for position distance."""
+        """Spark call for position distance."""
         return sqrt(pow(cx1 - cx2, 2) + pow(cy1 - cy2, 2))
 
     def _composite_score_expr(self, first_pos_dist, mid_pos_dist, gap):
@@ -269,19 +260,6 @@ class PlayerValidator(PlayerValidatorBase):
         gap_score = gap / self.MAX_FRAME_GAP
 
         return 0.45 * position_score + 0.45 * mid_score + 0.1 * gap_score
-
-    def _calculate_iou_diff(
-        self,
-        ax1,
-        ay1,
-        ax2,
-        ay2,
-        bx1,
-        by1,
-        bx2,
-        by2,
-    ):
-        return bbox_iou_udf(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2)
 
 
 player_validator_cls = PlayerValidator()

@@ -8,7 +8,7 @@ import numpy as np
 from src.entities.models.app.video_item import VideoItem
 
 class VideoPreprocessor:
-    def __init__(self, match_id: int, n_samples: int = 5, histogram_threshold: float = 0.09, compression_width: int = 560):
+    def __init__(self, match_id: int, n_samples: int = 5, histogram_threshold: float = 0.03, compression_width: int = 560):
         self.prev_gray = None
         self.prev_hist = None
         self.windows_frames: List[Tuple[int, MatLike, float, float]] = []
@@ -19,10 +19,6 @@ class VideoPreprocessor:
         
         self.histogram_threshold = histogram_threshold
         self.compression_width = compression_width
-        self.scene_threshold = 0.09
-        self.motion_threshold = 0.25
-        self.max_skip_frames = 5
-        self.frames_since_scene_change = 0
 
         self.resize_w = 556
         self.resize_h = 370
@@ -64,12 +60,32 @@ class VideoPreprocessor:
     def add_frame(self, frame: MatLike, timestamp: float, frame_num: int) -> List[VideoItem]:        
         small = self.compress_frame(frame)
         delta = self.histogram_delta(small)
+        logfire.debug(f"[VideoProcessor] Histogram delta: {delta:.4f}")
+
+        if frame_num <= 100:
+            self.windows_frames.append((frame_num, small, delta, timestamp))
+            
+            if len(self.windows_frames) == 100:
+                selected = self.windows_frames.copy()
+                self.windows_frames.clear()
+                return [
+                    VideoItem(
+                        annotated_frame=item[1].copy(),
+                        frame=item[1].copy(),
+                        frame_num=item[0],
+                        timestamp=item[3],
+                        match_id=self.match_id
+                )
+                    for item in selected
+                ]
+
 
         self.windows_frames.append((frame_num, frame, delta, timestamp))
 
         if len(self.windows_frames) >= self.fps:
             selected = self.select_samples_from_window()
             self.windows_frames.clear()
+            selected.sort(key=lambda item: item.frame_num)
             return selected
         
         return []
@@ -99,7 +115,7 @@ class VideoPreprocessor:
         ]
 
         candidates = stable_frames if stable_frames else self.windows_frames
-        candidates = sorted(candidates, key=lambda item: item[2])
+        candidates = sorted(candidates, key=lambda item: item[2], reverse=True)
 
         min_gap = max(1, self.fps // self.n_samples)
         selected: List[VideoItem] = []

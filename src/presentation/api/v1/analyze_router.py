@@ -38,9 +38,9 @@ async def run_analysis(
 
     TaskRepository.upsert_task(task, session)
     logfire.info(f"[Router] Task {task.id} created, response submitted: {body.model_dump()}")
-    body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Video casero cortado 1.mkv"
+    # body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Video casero cortado 1.mkv"
     # body.video_name = r"C:\Users\Usuario\Desktop\no reconoce\Video de prueba partido oficial.mkv"
-    # body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Partido corto 4.mp4"
+    body.video_name = r"C:\Users\Usuario\Desktop\temp\res\Partido corto 4.mp4"
 
     orchestrator = Orchestrator()
     asyncio.create_task(execute_analysis(body, str(task.id)))

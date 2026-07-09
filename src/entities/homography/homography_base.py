@@ -318,7 +318,6 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         if result.is_valid:
             self._cached_H = result.H.copy()
             self._homography_buffer.append((result.frame_num, self._cached_H.copy()))
-            logfire.info(f"[Homography] Cached homography: {self._cached_H}")
         else:
             logfire.warning(
                 "[Homography] Attempted to cache an invalid homography — ignored"

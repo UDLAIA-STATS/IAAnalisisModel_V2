@@ -36,7 +36,8 @@ class BallTracker(DetectorBase):
             verbose=False,
             iou=0.45,
             device=self.device,
-            augment=True
+            augment=True,
+            agnostic_nms=True,
         )
 
     @override
@@ -70,7 +71,7 @@ class BallTracker(DetectorBase):
                 labels.append(f"Ball | {dt.confidence:.2f}")
 
             video_item.annotated_frame = annotator.annotate(
-                video_item.frame, filtered_detections, labels
+                video_item.annotated_frame, filtered_detections, labels
             )
 
         return detections_map

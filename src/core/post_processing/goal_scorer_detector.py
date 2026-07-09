@@ -98,7 +98,7 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         stmt = (
             select(PlayerState, PlayerModel)
             .join(PlayerModel, modelcol(PlayerState.player_id) == PlayerModel.id)
-            .where(modelcol(PlayerState.player.match_id) == match_id)
+            .where(modelcol(PlayerModel.match_id) == match_id)
             .where(PlayerState.has_ball == True)
             .order_by(modelcol(PlayerState.frame_number), modelcol(PlayerState.timestamp))
         )
@@ -420,14 +420,17 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             .where((col("g.frame_number") - col("p.frame_number")) <= self.POSSESSION_LOOKBACK_FRAMES) \
             .where((col("g.timestamp") - col("p.timestamp")) <= self.POSSESSION_LOOKBACK_SECONDS)
 
+        # Frame gap y distancia balón-gol
         candidates = candidates.withColumn(
             "frame_gap", col("g.frame_number") - col("p.frame_number")
         )
         candidates = candidates.withColumn(
             "ball_to_goal_dist_px",
             sqrt(pow(col("p.ball_x") - col("g.goal_cx"), 2) +
-                 pow(col("p.ball_y") - col("g.goal_cy"), 2))
+                pow(col("p.ball_y") - col("g.goal_cy"), 2))
         )
+
+        # Obtener balón en el momento del gol (para distancia a línea)
         ball_at_goal = ball_df.select(
             col("frame_number").alias("g_ball_frame"),
             col("ball_mx").alias("ball_at_goal_mx"),
@@ -437,7 +440,7 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         )
         candidates = candidates.join(
             broadcast(ball_at_goal),
-            candidates["g.frame_number"] == ball_at_goal["g_ball_frame"],
+            col("g.frame_number") == col("g_ball_frame"),
             "left"
         )
         candidates = candidates.withColumn(
@@ -447,22 +450,26 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             "ball_at_goal_my",
             coalesce(col("ball_at_goal_my"), col("ball_at_goal_cy") * self.DEFAULT_METER_PER_PIXEL)
         )
+
+        # Distancia a la línea de gol (en metros)
         candidates = self._add_distance_to_goal_line(
             candidates, goal_line, "ball_at_goal_mx", "ball_at_goal_my"
         )
         candidates = candidates.withColumnRenamed("dist_to_goal_line", "dist_to_goal_line_m")
 
+        # Velocidad del balón en el momento del gol
         ball_speed_at_goal = ball_df.select(
             col("frame_number").alias("g_ball_speed_frame"),
             col("speed_kmh").alias("ball_speed")
         )
         candidates = candidates.join(
             broadcast(ball_speed_at_goal),
-            candidates["g.frame_number"] == ball_speed_at_goal["g_ball_speed_frame"],
+            col("g.frame_number") == col("g_ball_speed_frame"),
             "left"
         )
         candidates = candidates.fillna({"ball_speed": 0.0})
 
+        # Score heurístico (cuanto menor, mejor)
         candidates = candidates.withColumn(
             "score",
             (col("frame_gap") / self.POSSESSION_LOOKBACK_FRAMES) * 0.30 +
@@ -470,16 +477,26 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             (col("dist_to_goal_line_m") / 10.0) * 0.25 +
             (1.0 - col("p.confidence")) * 0.20
         )
-        candidates = candidates.withColumnRenamed("p.frame_number", "frame_number") \
-                               .withColumnRenamed("p.player_id", "player_id") \
-                               .withColumnRenamed("p.track_id", "track_id") \
-                               .withColumnRenamed("p.team_id", "team_id") \
-                               .withColumnRenamed("p.shirt_number", "shirt_number") \
-                               .withColumnRenamed("p.confidence", "confidence") \
-                               .withColumnRenamed("p.player_speed", "player_speed") \
-                               .withColumnRenamed("g.frame_number", "goal_frame") \
-                               .withColumnRenamed("g.timestamp", "goal_timestamp")
-        return candidates
+
+        # Selección final con alias claros
+        result = candidates.select(
+            col("g.goal_id").alias("goal_id"),
+            col("p.frame_number").alias("frame_number"),
+            col("p.player_id").alias("player_id"),
+            col("p.track_id").alias("track_id"),
+            col("p.team_id").alias("team_id"),
+            col("p.shirt_number").alias("shirt_number"),
+            col("p.confidence").alias("confidence"),
+            col("p.player_speed").alias("player_speed"),
+            col("g.frame_number").alias("goal_frame"),
+            col("g.timestamp").alias("goal_timestamp"),
+            col("frame_gap"),
+            col("ball_to_goal_dist_px"),
+            col("dist_to_goal_line_m"),
+            col("ball_speed"),
+            col("score")
+        )
+        return result
 
     def _link_goals_heuristic(
         self,
@@ -620,12 +637,58 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             .where(col("b.speed_kmh") >= self.MIN_SHOT_SPEED_KMH) \
             .where(col("b.speed_kmh") <= self.MAX_SHOT_SPEED_KMH)
 
+        # Distancia a la línea de gol (en metros)
         candidates = self._add_distance_to_goal_line(
             candidates, goal_line, "b.ball_mx", "b.ball_my"
         )
-        candidates = candidates.withColumnRenamed("dist_to_goal_line", "dist_to_goal_line")
+        # La columna creada es "dist_to_goal_line"
 
-        candidates = candidates.select(
+        # Calcular ángulo de aproximación hacia la portería
+        # Necesitamos el centro de la portería en metros.
+        # Lo obtenemos del promedio de los goles (convertido a metros)
+        goal_center = self._compute_goal_center(goals_df)  # devuelve (cx_m, cy_m)
+        if goal_center is None:
+            # Si no hay goles, usar un punto por defecto (ej. centro del campo)
+            goal_center = (0.0, 0.0)
+
+        # Añadir columnas auxiliares para el ángulo
+        candidates = candidates.withColumn(
+            "goal_center_x", lit(goal_center[0])
+        ).withColumn(
+            "goal_center_y", lit(goal_center[1])
+        )
+
+        # Vector desde el balón hasta el centro de la portería
+        candidates = candidates.withColumn(
+            "to_goal_x", col("goal_center_x") - col("b.ball_mx")
+        ).withColumn(
+            "to_goal_y", col("goal_center_y") - col("b.ball_my")
+        )
+
+        # Velocidad del balón (ya está en b.vx, b.vy)
+        # Ángulo entre el vector velocidad y el vector hacia la portería
+        # Usamos producto punto: cos(angle) = (v · to_goal) / (|v| * |to_goal|)
+        candidates = candidates.withColumn(
+            "dot_product",
+            col("b.vx") * col("to_goal_x") + col("b.vy") * col("to_goal_y")
+        ).withColumn(
+            "norm_v", sqrt(col("b.vx")**2 + col("b.vy")**2)
+        ).withColumn(
+            "norm_to_goal", sqrt(col("to_goal_x")**2 + col("to_goal_y")**2)
+        )
+        # Evitar división por cero
+        candidates = candidates.withColumn(
+            "angle_to_goal",
+            when(
+                (col("norm_v") > 0) & (col("norm_to_goal") > 0),
+                sql_abs(col("dot_product") / (col("norm_v") * col("norm_to_goal")))
+            ).otherwise(0.0)
+        )
+        # El ángulo en radianes, pero podemos usar el coseno directamente (0..1)
+        # 1 significa alineado, 0 perpendicular. Para el clasificador, es útil.
+
+        # Seleccionar columnas finales
+        result = candidates.select(
             col("p.player_id"),
             col("p.track_id"),
             col("p.team_id"),
@@ -637,9 +700,24 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             col("b.speed_kmh").alias("ball_speed"),
             col("p.player_speed"),
             col("p.confidence"),
-            col("dist_to_goal_line")
+            col("dist_to_goal_line"),
+            col("angle_to_goal")
         )
-        return candidates
+        return result
+
+    def _compute_goal_center(self, goals_df: DataFrame) -> Optional[Tuple[float, float]]:
+        """Calcula el centro promedio de los goles en metros."""
+        if goals_df.count() == 0:
+            return None
+        avg_row = goals_df.select(
+            avg("goal_cx").alias("cx"),
+            avg("goal_cy").alias("cy")
+        ).collect()[0]
+        if avg_row.cx is None or avg_row.cy is None:
+            return None
+        return (avg_row.cx * self.DEFAULT_METER_PER_PIXEL,
+                avg_row.cy * self.DEFAULT_METER_PER_PIXEL)
+
 
     def _detect_shots_heuristic(
         self,
@@ -705,23 +783,20 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             player_event_counts[pid]["shots"] += 1
             player_event_counts[pid]["events"].append(shot)
 
-        total_goals = 0
-        total_shots = 0
+        increment = 0
 
         for player_id, counts in player_event_counts.items():
             player = session.get(PlayerModel, player_id)
             if player:
-                increment = counts["goals"] + counts["shots"]
+                increment = int(counts["goals"]) + int(counts["shots"])
                 player.goals += increment
-                total_goals += counts["goals"]
-                total_shots += counts["shots"]
                 logfire.info(
                     f"[GoalScorerDetector] Player {player_id} (track {player.track_id}) "
                     f"+{increment} goals_shots (goals={counts['goals']}, shots={counts['shots']}) "
                     f"-> total={player.goals}"
                 )
+                session.add(player)
 
-        # Marcar PlayerState.is_goal = True para los goles reales
         for link in goal_links:
             if link.get("is_goal"):
                 stmt = (
@@ -739,7 +814,7 @@ class GoalScorerDetector(GoalScorerDetectorBase):
 
         session.commit()
         logfire.info(
-            f"[GoalScorerDetector] DB updated: {total_goals} goals + {total_shots} near-goal shots "
+            f"[GoalScorerDetector] DB updated: {increment} goals"
             f"assigned across {len(player_event_counts)} players"
         )
 

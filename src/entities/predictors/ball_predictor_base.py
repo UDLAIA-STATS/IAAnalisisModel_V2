@@ -95,7 +95,6 @@ class PredictorBase:
             )
 
         states = sorted(states, key=lambda s: (s.frame_number, s.timestamp))
-
         for i, state in enumerate(states):
             if i == 0:
                 continue
@@ -103,46 +102,41 @@ class PredictorBase:
             prev = states[i - 1]
 
             dx_px, dy_px = cls._compute_raw_dx_dy(state, prev)
-            state.dx = dx_px
-            state.dy = dy_px
+            state.dx = float(dx_px) if dx_px is not None else 0.0
+            state.dy = float(dy_px) if dy_px is not None else 0.0
 
             if interpolator is not None:
                 dm_x, dm_y = cls._compute_meters_from_interpolator(interpolator, state)
-                prev_dm_x, prev_dm_y = cls._compute_meters_from_interpolator(
-                    interpolator, prev
-                )
-                if dm_x is not None and dm_y is not None and prev_dm_x is not None and prev_dm_y is not None:    
-                        state.dx_meters = dm_x - prev_dm_x
-                        state.dy_meters = dm_y - prev_dm_y
+                prev_dm_x, prev_dm_y = cls._compute_meters_from_interpolator(interpolator, prev)
+                if dm_x is not None and dm_y is not None and prev_dm_x is not None and prev_dm_y is not None:
+                    state.dx_meters = float(dm_x - prev_dm_x)
+                    state.dy_meters = float(dm_y - prev_dm_y)
                 else:
-                    state.dx_meters = dx_px
-                    state.dy_meters = dy_px
+                    state.dx_meters = float(dx_px) if dx_px is not None else 0.0
+                    state.dy_meters = float(dy_px) if dy_px is not None else 0.0
             else:
-                state.dx_meters = dx_px
-                state.dy_meters = dy_px
+                state.dx_meters = float(dx_px) if dx_px is not None else 0.0
+                state.dy_meters = float(dy_px) if dy_px is not None else 0.0
 
             dt = state.timestamp - prev.timestamp
-
             if dt is None or dt == 0:
                 dt = 0.0001
 
-            state.delta_x = state.dx_meters
-            state.delta_y = state.dy_meters
-            state.distance_meters = math.hypot(state.dx_meters, state.dy_meters)
+            state.delta_x = float(state.dx_meters)
+            state.delta_y = float(state.dy_meters)
+            state.distance_meters = float(math.hypot(state.dx_meters, state.dy_meters))
 
-            state.vx = state.dx_meters / dt
-            state.vy = state.dy_meters / dt
-            speed_ms = math.hypot(state.vx, state.vy)
-            state.speed_kmh = speed_ms * 3.6
+            state.vx = float(state.dx_meters / dt)
+            state.vy = float(state.dy_meters / dt)
+            speed_ms = float(math.hypot(state.vx, state.vy))
+            state.speed_kmh = float(speed_ms * 3.6)
+            state.speed_kmh = float(min(state.speed_kmh, cls.MAX_BALL_SPEED_KMH))
 
-            state.speed_kmh = min(state.speed_kmh, cls.MAX_BALL_SPEED_KMH)
-
-            prev_vx = prev.vx if prev.vx is not None else 0.0
-            prev_vy = prev.vy if prev.vy is not None else 0.0
-            state.ax = (state.vx - prev_vx) / dt
-            state.ay = (state.vy - prev_vy) / dt
-            state.acceleration = math.hypot(state.ax, state.ay)
-            state.acceleration = min(state.acceleration, cls.MAX_BALL_ACCEL_MSS)
+            prev_vx = float(prev.vx) if prev.vx is not None else 0.0
+            prev_vy = float(prev.vy) if prev.vy is not None else 0.0
+            state.ax = float((state.vx - prev_vx) / dt)
+            state.ay = float((state.vy - prev_vy) / dt)
+            state.acceleration = float(math.hypot(state.ax, state.ay))
+            state.acceleration = float(min(state.acceleration, cls.MAX_BALL_ACCEL_MSS))
 
         return states
-

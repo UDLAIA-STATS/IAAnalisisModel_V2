@@ -123,7 +123,7 @@ class Orchestrator:
 
             except Exception as e:
                 processing_batch_step.state = StatesModel.FAILED
-                processing_batch_step.message = f"Error procesando batch: {traceback.format_exc(490)}"
+                processing_batch_step.message = f"Error procesando batch: {traceback.format_exc(400)}"
                 TaskRepository.upsert_task_step(processing_batch_step, session)
                 task.general_state = StatesModel.FAILED
                 TaskRepository.upsert_task(task, session)
@@ -138,7 +138,7 @@ class Orchestrator:
             try:
                 ValidationProcess().execute(session=session, task=task, request=request, total_frames=total_frames, fps=fps)
             except Exception as e:
-                logfire.fatal(f"Error validating players: {traceback.format_exc(500)}")
+                logfire.fatal(f"Error validating players: {traceback.format_exc(400)}")
                 task.general_state = StatesModel.FAILED
                 TaskRepository.upsert_task(task, session)
                 raise e

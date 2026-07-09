@@ -157,7 +157,7 @@ class PlayerStatesRepository:
         if max_appearance is None:
             max_appearance = int(180)
 
-        return int(max_appearance * 0.38)
+        return int(max_appearance * 0.3)
 
     @staticmethod
     def get_states_appearances(

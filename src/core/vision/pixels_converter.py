@@ -45,15 +45,17 @@ class PixelsConverter:
                     "[CalculateAreaBoundaryEnds] No se detectaron lineas en el frame."
                 )
                 return None
+            
+            if lines.ndim == 3 and lines.shape[1] == 1:
+                lines = lines.reshape(-1, 4)
 
-            # quedarse solo con horizontales
             hor = []
 
             for line in lines:
-                x1, y1, x2, y2 = line[0]
+                x1, y1, x2, y2 = line
                 angle = abs(np.arctan2(y2 - y1, x2 - x1))
                 if angle < 0.105:
-                    hor.append(line[0])
+                    hor.append(line)
 
             if not hor:
                 logfire.debug(
