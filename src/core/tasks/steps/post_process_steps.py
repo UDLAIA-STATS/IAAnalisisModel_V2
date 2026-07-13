@@ -12,9 +12,10 @@ from src.core.post_processing import (
     ball_predictor_cls,
     goal_validator_cls,
     number_postprocessing,
-    ball_possession_analyzer,
+    events_analyzer,
     goal_scorer_detector_cls,
-    player_crop_validator
+    player_crop_validator,
+    ball_possession_predictor_cls
 )
 from src.core.vision.color_recognizer import jersey_color_extractor
 
@@ -44,7 +45,6 @@ class ValidationProcess:
             player_validator_cls.validate(request.match_id, total_frames, session)
             physics_procesor.process(request.match_id, fps, session)
             physical_validator.validate(request.match_id, session)
-            player_validator_cls.validate(request.match_id, total_frames, session)
             physics_procesor.process(request.match_id, fps, session)
 
             players = PlayerRepository.get_players_by_match_id(
@@ -59,10 +59,12 @@ class ValidationProcess:
 
             ball_predictor_cls.predict(request.match_id, total_frames, session)
             goal_validator_cls.validate(request.match_id, session)
+            ball_possession_predictor_cls.predict(request.match_id, session)
+
             goal_scorer_detector_cls.detect(request.match_id, total_frames, session)
 
             number_postprocessing.process(request.match_id, session)
-            ball_possession_analyzer.analyze(request.match_id, session)
+            events_analyzer.analyze(request.match_id, session)
 
             # player_crop_validator.validate_match(request.match_id, session)
 

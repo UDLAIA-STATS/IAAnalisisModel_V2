@@ -36,7 +36,6 @@ class BallTracker(DetectorBase):
             verbose=False,
             iou=0.45,
             device=self.device,
-            augment=True,
             agnostic_nms=True,
         )
 

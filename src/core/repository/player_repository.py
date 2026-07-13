@@ -61,3 +61,21 @@ class PlayerRepository:
 
         session.add(player)
         session.flush()
+
+    @staticmethod
+    def upload_match_files(team_heatmap_path: str, movement_trajectories_path: str, match_id: int, session: Session):
+        players = session.exec(
+            select(PlayerModel).where(PlayerModel.match_id == match_id)
+        ).all()
+
+        for player in players:
+            player_db = session.get(PlayerModel, player.id)
+
+            if not player_db:
+                continue
+
+            player_db.team_heatmap_path = team_heatmap_path
+            player_db.movement_trajectories_path = movement_trajectories_path
+
+            session.add(player)
+            session.flush()

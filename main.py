@@ -16,7 +16,7 @@ from src.config.routes import ensure_directories, validate_model
 async def lifespan(app: FastAPI):
     print("Application is starting...")
     print("Creating tables...")
-    connection_manager.create_database(False)
+    connection_manager.create_database()
     ensure_directories()
     validate_model()
     logfire.configure()
@@ -35,7 +35,7 @@ def run_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=True,
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 

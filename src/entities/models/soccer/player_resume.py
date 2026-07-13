@@ -9,13 +9,14 @@ class PlayerResume(BaseModel):
     team_color: str
     shirt_number: int
     goals: int
+    passes: int
 
-    avg_speed: float
-    avg_distance: float
+    avg_speed_kmh: float
+    distance_km: float
     avg_acceleration: float
-    ball_possession_time: float
+    avg_possession_time_s: float
 
     player_crop_path: str
-    player_heatmap_path: str
+    heatmap_image_path: str
     team_heatmap_path: str
     movement_trajectories_path: str

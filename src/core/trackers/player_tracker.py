@@ -55,12 +55,12 @@ class PlayerTracker(DetectorBase):
             verbose=False,
             device=self.device,
             # stream=True,
-            augment=True,
+            # augment=True,
             agnostic_nms=True,
             end2end=True
         )
 
-        logfire.info(f"[PlayerTracker] Number of tracks: {len(list(tracks))}")
+        # logfire.info(f"[PlayerTracker] Number of tracks: {len(list(tracks))}")
         return tracks
 
     @override

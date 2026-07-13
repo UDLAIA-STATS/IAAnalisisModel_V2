@@ -17,8 +17,8 @@ def get_spark():
             .config("spark.pyspark.driver.python", sys.executable)
             .config("spark.python.worker.faulthandler.enabled", "true")
             .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true")
-            .config("spark.executor.memory", "2g")
-            .config("spark.driver.memory", "4g")
+            .config("spark.executor.memory", "3g")
+            .config("spark.driver.memory", "6g")
             .config("spark.master", "local[2]")
             .getOrCreate())
     return _spark

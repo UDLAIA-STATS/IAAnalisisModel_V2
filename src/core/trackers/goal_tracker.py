@@ -29,10 +29,10 @@ class GoalTracker(DetectorBase):
         self.types_map = {0: GoalModel}
 
     @override
-    def detect(self, frames) -> Sequence[Union[Results, Detections]]:
+    def detect(self, frame) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         return self.model.predict(
-            frames,
+            frame,
             conf=0.15,
             verbose=False,
             iou=0.45,

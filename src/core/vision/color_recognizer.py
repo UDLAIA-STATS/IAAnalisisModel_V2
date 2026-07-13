@@ -59,7 +59,7 @@ class ColorRecognizer(ColorRecognizerBase):
                     f"ΔE({player_a.track_id}, {player_b.track_id}) = {dist:.2f}"
                 )
 
-                if dist < 20.0:
+                if dist < 18.0:
                     graph[player_a.id].add(player_b.id)
                     graph[player_b.id].add(player_a.id)
                     edge_count += 1

@@ -623,12 +623,6 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 ax.set_ylabel("")
                 ax.invert_yaxis()
 
-                ax.set_title(
-                    f"Player Heatmap — ID: {player_id} | Track: {track_id}\n"
-                    f"Frames: {len(dx)}",
-                    fontsize=12,
-                )
-
                 plt.tight_layout()
 
                 out_path = output_dir / f"{player_id}_heatmap_{stem}.png"

@@ -4,16 +4,15 @@ import logfire
 from pyspark.sql import DataFrame, Window
 from pyspark.sql.functions import (
     col, lit, when, row_number, avg, abs as sql_abs,
-    sqrt, pow, lag, lead, broadcast, coalesce,
-    expr, sum as spark_sum, max as spark_max, min as spark_min,
-    count, desc, asc
+    sqrt, pow, broadcast, coalesce
 )
+from pyspark.ml.functions import vector_to_array
 from pyspark.sql.types import (
     FloatType, IntegerType, BooleanType, StructType, StructField, StringType
 )
 from pyspark.ml.feature import VectorAssembler, StandardScaler
 from pyspark.ml.classification import RandomForestClassifier
-from pyspark.ml import Pipeline, PipelineModel
+from pyspark.ml import Pipeline
 
 from sqlmodel import Session, select, col as modelcol
 
@@ -21,7 +20,6 @@ from src.entities.services.goal_scorer_detector_base import GoalScorerDetectorBa
 from src.entities.models.soccer.goal_model import GoalModel
 from src.entities.models.soccer.ball_model import BallState
 from src.entities.models.soccer.player_model import PlayerModel, PlayerState
-from src.core.repository.goal_repository import GoalRepository
 
 
 class GoalScorerDetector(GoalScorerDetectorBase):
@@ -78,9 +76,6 @@ class GoalScorerDetector(GoalScorerDetectorBase):
 
         logfire.info(f"[GoalScorerDetector] Completed for match {match_id}")
 
-    # -------------------------------------------------------------------------
-    # Data fetching methods (unchanged)
-    # -------------------------------------------------------------------------
 
     def _fetch_goals(self, match_id: int, session: Session) -> List[GoalModel]:
         stmt = select(GoalModel).where(GoalModel.match_id == match_id)
@@ -128,9 +123,6 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             })
         return results
 
-    # -------------------------------------------------------------------------
-    # DataFrame builders (unchanged, but ensure we have ball_mx, ball_my)
-    # -------------------------------------------------------------------------
 
     def _build_goals_dataframe(self, goals: List[GoalModel]) -> DataFrame:
         rows = []
@@ -378,7 +370,8 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         model = pipeline.fit(train_df)
 
         scored = model.transform(candidates)
-        scored = scored.withColumn("ml_score", col("probability").getItem(1))
+        prob = vector_to_array(col("probability")).getItem(1)
+        scored = scored.withColumn("ml_score", prob)
 
         w_goal = Window.partitionBy("goal_id").orderBy(col("ml_score").desc())
         best = scored.withColumn("rn", row_number().over(w_goal)).filter(col("rn") == 1)
@@ -590,7 +583,8 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         model = pipeline.fit(train_df)
 
         scored = model.transform(candidates)
-        scored = scored.withColumn("ml_score", col("probability").getItem(1))
+        prob = vector_to_array(scored["probability"])
+        scored = scored.withColumn("ml_score", prob.getItem(1))
 
         threshold = 0.6
         final = scored.filter(col("ml_score") >= threshold)
@@ -789,7 +783,8 @@ class GoalScorerDetector(GoalScorerDetectorBase):
             player = session.get(PlayerModel, player_id)
             if player:
                 increment = int(counts["goals"]) + int(counts["shots"])
-                player.goals += increment
+                player.goals += int(counts["goals"])
+                player.shots += int(counts["shots"])
                 logfire.info(
                     f"[GoalScorerDetector] Player {player_id} (track {player.track_id}) "
                     f"+{increment} goals_shots (goals={counts['goals']}, shots={counts['shots']}) "

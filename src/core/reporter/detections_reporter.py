@@ -9,6 +9,7 @@ from src.entities.models.app.report_models import ReportRow
 from src.entities.reporter.detections_reporter_base import DetectionsReporterBase
 from src.entities.reporter.match_spatial_analyzer import MatchSpatialAnalyzer
 from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
+from src.config.configuration import settings
 
 class DetectionsReporter(DetectionsReporterBase):
     def __init__(self):
@@ -68,7 +69,14 @@ class DetectionsReporter(DetectionsReporterBase):
 
         for player_id, heatmap_path in player_heatmaps:
             key = self.upload_report(heatmap_path, match_id, FilePurposeTypes.HEATMAP)
-            PlayerRepository.upload_heatmap(player_id, key, session)
+            PlayerRepository.upload_heatmap(player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session)
+        
+        PlayerRepository.upload_match_files(
+            settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["heatmap_chart"],
+            settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["movement_trajectories"],
+            match_id,
+            session,
+        )
 
         return (
             chart_keys["report_detections"],

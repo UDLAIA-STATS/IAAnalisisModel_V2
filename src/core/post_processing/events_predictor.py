@@ -203,9 +203,6 @@ class BallPossessionMLAnalyzer(BallPossessionAnalyzerBase):
             .withColumn("label", lit(1)) \
             .select("label", "dist_pb", "player_speed", "ball_speed",
                     "dist_ball_goal", "angle_ball_goal")
-        # ... resto del código (negativos y entrenamiento) igual
-
-        # Negativos: frames lejos del gol (usamos df original)
         neg_df = (
             df.filter(
                 (col("dist_ball_goal") > 2 * self.SHOT_DISTANCE_THRESHOLD)
@@ -554,19 +551,25 @@ class BallPossessionMLAnalyzer(BallPossessionAnalyzerBase):
             return
         for player in players:
             if player.id in possession_dict:
-                player.ball_possession_time = float(possession_dict[player.id])
-            # if player.id in shot_dict:
-            #     player.goals += int(shot_dict[player.id])
-            if player.id in goal_assignments or player.id in shot_dict:
-                if player.goals == 0 or player.goals != int(goal_assignments[player.id])  or player.goals != int(shot_dict[player.id]):
-                    player.goals = int(goal_assignments[player.id])
-                    player.goals += int(shot_dict[player.id])
-                elif int(goal_assignments[player.id]) > 0:
-                    player.goals = int(float(int(goal_assignments[player.id]) * 0.2) + player.goals)
-                    player.goals = int(float(int(shot_dict[player.id]) * 0.8) + player.goals)
+                if player.ball_possession_time != 0:
+                    player.ball_possession_time = int(possession_dict.get(player.id, 0) * 0.4) + player.ball_possession_time
+                else:
+                    player.ball_possession_time = int(possession_dict.get(player.id, 0))
+
+            if player.id in shot_dict:
+                if player.shots != 0:
+                    player.shots = int(float(int(shot_dict.get(player.id, 0)) * 0.6) + player.shots)
+                else:
+                    player.shots = int(shot_dict.get(player.id, 0))
+
+            if player.id in goal_assignments:
+                if player.goals == 0 or player.goals != int(goal_assignments.get(player.id, 0)):
+                    player.goals = int(goal_assignments.get(player.id, 0))
+                elif int(goal_assignments.get(player.id, 0)) > 0:
+                    player.goals = int(float(int(goal_assignments.get(player.id, 0)) * 0.4) + player.goals)
 
         session.commit()
         logfire.info("Player stats updated.")
 
 
-ball_possession_analyzer = BallPossessionMLAnalyzer()
+events_analyzer = BallPossessionMLAnalyzer()

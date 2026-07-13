@@ -56,9 +56,8 @@ class PitchHomography(HomographyBase):
         h, w = video_item.frame.shape[:2]
         self.reference_frame_size = (int(w), int(h))
 
-        # 1. Si está en caché y se permite, devolver caché
         if use_cache and self._cached_H is not None:
-            logfire.info(f"[Homography] Usando caché para frame {video_item.frame_num}")
+            # logfire.info(f"[Homography] Usando caché para frame {video_item.frame_num}")
             result = HomographyResult(
                 H_json=json.dumps(self._cached_H.tolist()),
                 reprojection_error=0.0,
@@ -72,10 +71,9 @@ class PitchHomography(HomographyBase):
             session.flush()
             return result
 
-        # 2. Intentar ML + PnL
         ml_success = False
         if self.detector is not None and self.calibrator is not None:
-            logfire.info(f"[Homography] Intentando calibración ML+PnL para frame {video_item.frame_num}")
+            # logfire.info(f"[Homography] Intentando calibración ML+PnL para frame {video_item.frame_num}")
             try:
                 features = self.detector.detect(video_item.frame)
                 if features is not None:

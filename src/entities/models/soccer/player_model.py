@@ -12,7 +12,8 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     team_id: int = Field(index=True, default=None, nullable=True)
     team_color: str = Field(index=True, default=None, nullable=True)
 
-    goals: int = Field(default=0)  # Goles del jugador
+    goals: int = Field(default=0)
+    shots: int = Field(default=0)
     shirt_number: int = Field(nullable=True, default=None)
     ball_possession_time: float = Field(default=0)
 

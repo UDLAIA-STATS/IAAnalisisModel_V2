@@ -1,3 +1,11 @@
+# tracker_type: bytetrack
+# track_high_thresh: 0.6
+# track_low_thresh: 0.1
+# new_track_thresh: 0.7
+# track_buffer: 150
+# match_thresh: 0.7
+# fuse_score: True
+
 tracker_type: tracktrack
 
 track_buffer: 180
@@ -25,7 +33,3 @@ with_reid: True
 gmc_method: sparseOptFlow
 model: yolo26m-cls.pt
 
-
-
-# proximity_thresh: 0.1
-# appearance_thresh: 0.2
