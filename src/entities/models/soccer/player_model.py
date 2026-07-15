@@ -11,6 +11,7 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     track_id: int = Field(index=True)
     team_id: int = Field(index=True, default=None, nullable=True)
     team_color: str = Field(index=True, default=None, nullable=True)
+    team_goals: int = Field(default=0)
 
     goals: int = Field(default=0)
     shots: int = Field(default=0)

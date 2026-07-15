@@ -15,7 +15,7 @@ new_track_thresh: 0.6
 match_thresh: 0.65
 fuse_score: True
 
-iou_weight: 0.45
+iou_weight: 0.4
 reid_weight: 0.4
 
 conf_weight: 0.35
@@ -27,7 +27,7 @@ reduce_step: 0.3
 
 tai_thr: 0.45
 min_track_len: 1
-lost_match_thr: 0.35
+lost_match_thr: 0.4
 
 with_reid: True
 gmc_method: sparseOptFlow
