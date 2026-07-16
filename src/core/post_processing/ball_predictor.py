@@ -24,7 +24,7 @@ from pyspark.ml import Pipeline, PipelineModel
 
 from sqlmodel import Session
 
-from src.entities.predictors.ball_predictor_base import PredictorBase
+from src.entities.predictors.ball_predictor_base import BallPredictorBase
 from src.core.repository.ball_repository import BallRepository
 from src.entities.models.soccer.ball_model import BallState
 from src.entities.models.pyspark.udfs import (
@@ -32,7 +32,7 @@ from src.entities.models.pyspark.udfs import (
 )
 
 
-class BallPredictor(PredictorBase):
+class BallPredictor(BallPredictorBase):
     """
     Ball predictor with ML-enhanced trajectory estimation and multi-ball cleaning.
     """

@@ -15,13 +15,13 @@ new_track_thresh: 0.6
 match_thresh: 0.65
 fuse_score: True
 
-iou_weight: 0.4
+iou_weight: 0.35
 reid_weight: 0.4
 
 conf_weight: 0.35
 angle_weight: 0.4
 penalty_p: 0.3
-penalty_q: 0.4
+penalty_q: 0.3
 
 reduce_step: 0.3
 

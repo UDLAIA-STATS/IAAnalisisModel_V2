@@ -8,7 +8,7 @@ from src.entities.models.soccer.ball_model import BallState
 from src.entities.utils.spark_instance import spark
 
 
-class PredictorBase:
+class BallPredictorBase:
     """Base class with constants and shared utilities for ball prediction."""
 
     # --- Filtering Thresholds ---
@@ -17,7 +17,6 @@ class PredictorBase:
     STATIC_FRAME_THRESHOLD: int = 8      # consecutive static frames
     MAX_INTERPOLATION_GAP: int = 5       # max missing frames to interpolate
     MAX_POSITION_JUMP_PX: float = 180.0  # px — filter teleportation
-    VELOCITY_SMOOTHING_ALPHA: float = 0.65
 
     # --- Ball Physics Constraints ---
     MAX_BALL_SPEED_KMH: float = 130.0    # FIFA record ~131 km/h
@@ -43,8 +42,8 @@ class PredictorBase:
         curr: BallState, prev: BallState
     ) -> Tuple[float, float]:
         """Raw pixel displacement between two consecutive states."""
-        curr_cx, curr_cy = PredictorBase._compute_centroid(curr)
-        prev_cx, prev_cy = PredictorBase._compute_centroid(prev)
+        curr_cx, curr_cy = BallPredictorBase._compute_centroid(curr)
+        prev_cx, prev_cy = BallPredictorBase._compute_centroid(prev)
         return curr_cx - prev_cx, curr_cy - prev_cy
 
     @staticmethod

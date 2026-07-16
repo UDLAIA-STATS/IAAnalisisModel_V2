@@ -18,6 +18,7 @@ from src.core.post_processing import (
     ball_possession_predictor_cls
 )
 from src.core.vision.color_recognizer import jersey_color_extractor
+from src.core.post_processing.v2 import PostProcessor, PostProcessingConfig
 
 import traceback
 
@@ -57,14 +58,16 @@ class ValidationProcess:
 
             jersey_color_extractor.merge_colors(request.match_id, session)
 
-            ball_predictor_cls.predict(request.match_id, total_frames, session)
-            goal_validator_cls.validate(request.match_id, session)
-            ball_possession_predictor_cls.predict(request.match_id, session)
-
-            goal_scorer_detector_cls.detect(request.match_id, total_frames, session)
+            PostProcessor(request.match_id, session=session, config=PostProcessingConfig(frame_rate=fps)).run()
 
             number_postprocessing.process(request.match_id, session)
-            events_analyzer.analyze(request.match_id, session)
+            # ball_predictor_cls.predict(request.match_id, total_frames, session)
+            # goal_validator_cls.validate(request.match_id, session)
+            # ball_possession_predictor_cls.predict(request.match_id, session)
+
+            # goal_scorer_detector_cls.detect(request.match_id, session)
+
+            # events_analyzer.analyze(request.match_id, session)
 
             # player_crop_validator.validate_match(request.match_id, session)
 

@@ -5,31 +5,23 @@ from src.entities.utils.spark_instance import spark
 class GoalScorerDetectorBase:
     """Base class with constants and shared utilities for goal scorer detection."""
 
-    # --- Temporal windows ---
     POSSESSION_LOOKBACK_FRAMES: int = 15
     POSSESSION_LOOKBACK_SECONDS: float = 0.5
     SHOT_LOOKAHEAD_FRAMES: int = 12
     SHOT_LOOKAHEAD_SECONDS: float = 0.5
 
-    # --- Spatial thresholds (in meters / centimeters) ---
-    # NEAR_GOAL_CM_THRESHOLD: ball must pass within this many centimeters of the goal
     NEAR_GOAL_CM_THRESHOLD: float = 150.0  # 1.5 meters = 150 centimeters
-    # If no meter conversion available, fallback pixel threshold
     NEAR_GOAL_PX_FALLBACK: float = 15.0
 
-    # Standard soccer goal dimensions
     GOAL_WIDTH_METERS: float = 7.32
     GOAL_HEIGHT_METERS: float = 2.44
 
-    # --- Ball physics for shot detection ---
     MIN_SHOT_SPEED_KMH: float = 20.0
     MAX_SHOT_SPEED_KMH: float = 130.0
 
-    # --- Confidence thresholds ---
     MIN_GOAL_CONFIDENCE: float = 0.50
     MIN_BALL_CONFIDENCE_FOR_SHOT: float = 0.40
 
-    # --- Pixel-to-meter fallback scale ---
     DEFAULT_METER_PER_PIXEL: float = 0.055
 
     def __init__(self):

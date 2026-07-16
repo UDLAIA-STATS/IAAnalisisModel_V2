@@ -14,7 +14,6 @@ from src.config.configuration import settings
 
 def truncate(value, decimals: int = 2) -> float:
     quantizer = Decimal("1." + "0" * decimals)
-    logfire.info(f"[PlayerResumeGenerator] Truncating {value} to {float(Decimal(str(value)).quantize(quantizer, rounding=ROUND_DOWN))}")
     return float(Decimal(str(value)).quantize(quantizer, rounding=ROUND_DOWN))
 
 class PlayerResumeGenerator:
@@ -28,7 +27,6 @@ class PlayerResumeGenerator:
                 url=f"{settings.STATS_NOTIFY_URL}/update-stats/",
                 json={"match_id": match_id, "stats": resumes, "color": color, "analized": analized},
             )
-            logfire.info(f"[PlayerResumeGenerator] Resumes sent, details: {resumes}")
             logfire.info(f"[PlayerResumeGenerator] Resumes sent, status code: {resp.status_code}")
             resp.raise_for_status()
         except httpx.HTTPError as e:

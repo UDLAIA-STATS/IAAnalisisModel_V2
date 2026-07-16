@@ -33,8 +33,10 @@ DIAGRAMS_DIR = OUTPUT_REPORTS_DIR / "diagrams"
 # MODELS
 MODELS_DIR = BASE_RES_DIR / "models"
 MODELS_BACKUP_DIR = MODELS_DIR / "backup"
+MODELS_TRAINING_DIR = MODELS_DIR / "training_data"
 YOLO_MODELS_DIR = MODELS_DIR / "yolo"
 TROCR_PATH = MODELS_DIR / "trocr"
+POST_PROCESSING_MODELS = MODELS_DIR / "post_processing"
 CONFIG_MODELS_DIR = MODELS_DIR / "config"
 BALL_MODEL_PATH = YOLO_MODELS_DIR / str(settings.BALL_MODEL_NAME)
 PLAYER_MODEL_PATH = YOLO_MODELS_DIR / str(settings.PLAYER_MODEL_NAME)
@@ -81,6 +83,8 @@ def ensure_directories():
         CUSTOM_MODELS,
         TIME_REPORTS_DIR,
         DIAGRAMS_DIR,
+        POST_PROCESSING_MODELS,
+        MODELS_TRAINING_DIR,
         WEIGHTS_DIR
     ]:
         if not directory.exists():
