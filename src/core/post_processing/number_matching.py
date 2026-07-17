@@ -70,7 +70,8 @@ class NumberMatching:
         clean = [
             obs
             for obs in observations
-            if occlusion.get((obs.player_id, obs.frame_number), 0.0) < self.iou_threshold
+            if occlusion.get((obs.player_id, obs.frame_number), 0.0)
+            < self.iou_threshold
         ]
         if not clean:
             return None  # nada confiable sobrevivió al filtrado
@@ -92,11 +93,14 @@ class NumberMatching:
                 obs.tens_pred == self.NONE_TENS
                 and obs.tens_none_prob < self.tens_none_confidence
             ):
-                weight *= 0.5  # descontar, no descartar — sigue siendo evidencia real
+                weight *= 0.5
             votes[obs.number] += weight
             legible_weight += obs.confidence
 
-        if total_weight == 0 or legible_weight / total_weight < self.illegible_threshold:
+        if (
+            total_weight == 0
+            or legible_weight / total_weight < self.illegible_threshold
+        ):
             return None
         return max(votes.items(), key=lambda kv: kv[1])[0] if votes else None
 
@@ -106,10 +110,19 @@ class NumberMatching:
         if not player_ids:
             return {}
 
-        number_rows = session.exec(select(PlayerNumbers).where(col(PlayerNumbers.player_id).in_(player_ids))).all()
-        state_rows = session.exec(select(PlayerState).where(col(PlayerState.player_id).in_(player_ids))).all()
+        number_rows = session.exec(
+            select(PlayerNumbers).where(
+                col(PlayerNumbers.player_id).in_(player_ids),
+                col(PlayerNumbers.confidence) > 0.6,
+            )
+        ).all()
+        state_rows = session.exec(
+            select(PlayerState).where(col(PlayerState.player_id).in_(player_ids))
+        ).all()
 
-        logfire.info(f"[NumberMatcher] Loaded {len(number_rows)} number observations and {len(state_rows)} state observations")
+        logfire.info(
+            f"[NumberMatcher] Loaded {len(number_rows)} number observations and {len(state_rows)} state observations"
+        )
 
         observations_by_player: dict[int, list[NumberObservation]] = defaultdict(list)
         for r in number_rows:

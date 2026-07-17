@@ -109,69 +109,70 @@ class NumberRecognizer:
             crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
             pil_img = Image.fromarray(crop_rgb)
 
-            with torch.no_grad(), torch.inference_mode(), torch.autocast(
-                enabled=False,
-                device_type="cuda" if torch.cuda.is_available() else "cpu",
-                dtype=torch.float32,
-            ):
-                inference_state = self.sam3_processor.set_image(pil_img)
-                # logfire.info(f" SAM3 inference state keys: {inference_state.keys()}")
-                output = self.sam3_processor.set_text_prompt(
-                    state=inference_state, prompt="jersey number"
-                )
+            # with torch.no_grad(), torch.inference_mode(), torch.autocast(
+            #     enabled=False,
+            #     device_type="cuda" if torch.cuda.is_available() else "cpu",
+            #     dtype=torch.float32,
+            # ):
+            #     inference_state = self.sam3_processor.set_image(pil_img)
+            #     # logfire.info(f" SAM3 inference state keys: {inference_state.keys()}")
+            #     output = self.sam3_processor.set_text_prompt(
+            #         state=inference_state, prompt="jersey number"
+            #     )
 
-            boxes = output.get("boxes")
-            scores = output.get("scores")
+            # boxes = output.get("boxes")
+            # scores = output.get("scores")
 
-            if boxes is None:
-                logfire.warning("[SAM3] output sin key 'boxes'")
-                return None, 0.0
+            # if boxes is None:
+            #     logfire.warning("[SAM3] output sin key 'boxes'")
+            #     return None, 0.0
 
-            if isinstance(boxes, torch.Tensor):
-                if boxes.numel() == 0:
-                    logfire.warning(
-                        "[SAM3] boxes vacío (tensor), sin detecciones para 'jersey number'"
-                    )
-                    return None, 0.0
-            else:
-                if len(boxes) == 0:
-                    logfire.warning(
-                        "[SAM3] boxes vacío (lista), sin detecciones para 'jersey number'"
-                    )
-                    return None, 0.0
+            # if isinstance(boxes, torch.Tensor):
+            #     if boxes.numel() == 0:
+            #         logfire.warning(
+            #             "[SAM3] boxes vacío (tensor), sin detecciones para 'jersey number'"
+            #         )
+            #         return None, 0.0
+            # else:
+            #     if len(boxes) == 0:
+            #         logfire.warning(
+            #             "[SAM3] boxes vacío (lista), sin detecciones para 'jersey number'"
+            #         )
+            #         return None, 0.0
 
-            if scores is None:
-                logfire.warning("[SAM3] output sin key 'scores'")
-                return None, 0.0
+            # if scores is None:
+            #     logfire.warning("[SAM3] output sin key 'scores'")
+            #     return None, 0.0
 
-            scores = scores.detach().to(dtype=torch.float32, device="cpu")
-            boxes = boxes.detach().to(dtype=torch.float32, device="cpu")
+            # scores = scores.detach().to(dtype=torch.float32, device="cpu")
+            # boxes = boxes.detach().to(dtype=torch.float32, device="cpu")
 
-            logfire.info(
-                f"[SAM3] {len(boxes)} detecciones, mejor score: {float(scores.max()) if isinstance(scores, torch.Tensor) else max(scores)}"
-            )
+            # logfire.info(
+            #     f"[SAM3] {len(boxes)} detecciones, mejor score: {float(scores.max()) if isinstance(scores, torch.Tensor) else max(scores)}"
+            # )
 
-            best_idx = int(np.argmax(scores).item())
-            best_box = boxes[best_idx]
-            sam3_score = float(scores[best_idx].item())
+            # best_idx = int(np.argmax(scores).item())
+            # best_box = boxes[best_idx]
+            # sam3_score = float(scores[best_idx].item())
 
-            x1, y1, x2, y2 = map(int, best_box.tolist())
-            h, w = crop_bgr.shape[:2]
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(w, x2), min(h, y2)
-            if x2 <= x1 or y2 <= y1:
-                return None, 0.0
+            # x1, y1, x2, y2 = map(int, best_box.tolist())
+            # h, w = crop_bgr.shape[:2]
+            # x1, y1 = max(0, x1), max(0, y1)
+            # x2, y2 = min(w, x2), min(h, y2)
+            # if x2 <= x1 or y2 <= y1:
+            #     return None, 0.0
 
-            number_roi = crop_bgr[y1:y2, x1:x2]
-            if number_roi.size == 0:
-                return None, 0.0
+            # number_roi = crop_bgr[y1:y2, x1:x2]
+            # if number_roi.size == 0:
+            #     return None, 0.0
 
-            ocr_number, ocr_conf = self._ocr_digits(number_roi)
+            ocr_number, ocr_conf = self._ocr_digits(crop_bgr)
             logfire.info(f"[SAM3] OCR: {ocr_number} ({ocr_conf})")
             if ocr_number is None:
                 return None, 0.0
 
-            combined_conf = sam3_score * ocr_conf
+            combined_conf = ocr_conf
+            # combined_conf = sam3_score * ocr_conf
             return ocr_number, combined_conf
 
         except Exception as e:
@@ -199,7 +200,7 @@ class NumberRecognizer:
                     best_text = digits
                     best_conf = conf
             if best_text:
-                return int(best_text), best_conf
+                return int(best_text), float(best_conf)
             return None, 0.0
         except Exception as e:
             print(f"OCR failed: {e}")
@@ -222,7 +223,7 @@ class NumberRecognizer:
             frame_number=original.frame_number,
             number=sam3_number,
             confidence=sam3_confidence,
-            visible_prob=original.visible_prob,  # keep visibility from classifier
+            visible_prob=original.visible_prob,
             tens_none_prob=1.0 if tens_pred == NONE_TENS else 0.0,
             tens_pred=tens_pred,
             tens_prob=1.0,
