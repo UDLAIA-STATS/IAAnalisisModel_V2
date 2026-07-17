@@ -848,8 +848,8 @@ class GoalScorerDetector(GoalScorerDetectorBase):
         for player_id, counts in player_event_counts.items():
             player = session.get(PlayerModel, player_id)
             if player:
-                player.goals += int(counts["goals"])
-                player.shots += int(counts["shots"])
+                player.goals = int(counts["goals"])
+                player.shots = int(counts["shots"])
                 logfire.info(
                     f"[GoalScorerDetector] Player {player_id} (track {player.track_id}) "
                     f"+{counts['goals']} goals, +{counts['shots']} shots"

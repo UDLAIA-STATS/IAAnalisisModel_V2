@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 import signal
 
+import cv2
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logfire
@@ -21,6 +22,7 @@ async def lifespan(app: FastAPI):
     validate_model()
     logfire.configure()
     logfire.instrument_fastapi(app)
+    # logfire.info(cv2.getBuildInformation())
     logfire.notice("Application started, ready to receive requests")
     yield
     connection_manager.dispose()

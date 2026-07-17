@@ -14,8 +14,8 @@ class PostProcessingConfig:
     cache_dataframes: bool = True               # Cachear DataFrames intermedios
 
     # Umbrales para detección
-    possession_threshold: float = 0.8
-    shot_threshold: float = 0.6
+    possession_threshold: float = 0.5
+    shot_threshold: float = 0.4
     goal_association_window: float = 5.0        # segundos
     min_possession_seconds: float = 0.09
 

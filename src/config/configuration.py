@@ -11,3 +11,4 @@ settings = Dynaconf(
 
 os.environ["USE_CUDA"] = "0"
 os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
+os.environ["HF_TOKEN"] = settings.HUGGINGFACE_TOKEN

@@ -1,4 +1,5 @@
 import traceback
+from typing import Dict, List
 from sqlmodel import Session
 import logfire
 
@@ -121,17 +122,21 @@ class PostProcessor:
                 possession_pred.cache()
 
             # Asignación de goles
-            goal_results = []
-            goal_links = {}
+            goal_results: Dict[str, List[Dict]] = {}
+            goal_frames = [row.frame_number for row in goals_df.select("frame_number").collect()]
             if goal_candidates is not None and not goal_candidates.isEmpty():
-                goal_results, goal_links = self.detector.predict_goal_scorer(
-                    goal_candidates, goal_model
+                goal_results = self.detector.predict_goal_scorer(
+                    candidates_df=goal_candidates,
+                    model=goal_model,
+                    shot_features=shot_features,
+                    shot_model=shot_model,
+                    goal_frames=goal_frames,
                 )
 
             # Disparos
             shot_pred = None
             if shot_features is not None and not shot_features.isEmpty():
-                shot_pred = self.detector.predict_shots(shot_features, shot_model)
+                shot_pred = self.detector.predict_shots(shot_features, shot_model, goal_frames)
                 if self.config.cache_dataframes and shot_pred is not None:
                     shot_pred.cache()
 
@@ -164,8 +169,7 @@ class PostProcessor:
             self.updater.update_player_states(possession_pred)
             if possession_times is not None or shot_counts is not None or goal_results:
                 self.updater.update_player_stats(
-                    self.match_id, possession_times, shot_counts, goal_links
-                )
+                    self.match_id, goal_results, possession_times)
             if interpolated_ball is not None:
                 self.updater.update_ball_states(raw_ball_df, ball_df, interpolated_ball)
             if goals_df is not None:
@@ -174,7 +178,7 @@ class PostProcessor:
                 )
                 self.updater.delete_invalid_goal_posts(valid_ids, self.match_id)
             if goal_results:
-                self.updater.mark_goal_frames(goal_results)
+                self.updater.mark_goal_frames(goal_results["goals"])
 
             logfire.info(f"[Pipeline] Completed for match {self.match_id}")
 

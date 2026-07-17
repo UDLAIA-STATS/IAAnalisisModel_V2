@@ -119,8 +119,8 @@ class FeatureEngineer:
         ).withColumn("gy_m", coalesce(col("gy_m"), col("cy") * self.meter_per_pixel))
 
         points = goals_with_ball.select("gx_m", "gy_m").dropna().collect()
-        if len(points) < 2:
-            return {"slope": 0.0, "intercept": 68.0, "is_vertical": False}
+        if len(points) < 3:
+            return None
 
         xs = np.array([p.gx_m for p in points])
         ys = np.array([p.gy_m for p in points])
@@ -256,6 +256,17 @@ class FeatureEngineer:
             "frame_gap", col("g.frame_number") - col("p.frame_number")
         )
 
+        
+        candidates = candidates.fillna({
+            "frame_gap": self.config.possession_lookback_frames,
+            "ball_to_goal_dist_px": 1000.0,
+            "dist_to_goal_line_m": 10.0,
+            "player_speed": 0.0,
+            "ball_speed": 0.0,
+            "ball_conf_at_goal": 0.5,
+            "inside_goal_area": False
+        })
+
         # Score heurístico para fallback
         candidates = candidates.withColumn(
             "score",
@@ -292,7 +303,7 @@ class FeatureEngineer:
             col("ball_speed"),
             col("inside_goal_area"),
             col("score"),
-        ).na.fill(9999.0)
+        )
 
         logfire.info(
             f"[FeatureEngineer] Built goal linking candidates: {features.count()}"
@@ -309,7 +320,7 @@ class FeatureEngineer:
         if any(df is None for df in [goals_df, ball_df, player_df]) or not goal_line:
             return None
 
-        p = player_df.alias("p")
+        p = player_df.alias("p").filter(col("has_ball"))
         b = ball_df.alias("b")
 
         candidates = (

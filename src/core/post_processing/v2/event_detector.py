@@ -1,4 +1,3 @@
-from networkx import is_empty
 from pyspark.sql import DataFrame, Window
 from pyspark.sql.functions import (
     col,
@@ -75,33 +74,40 @@ class EventDetector:
             )
 
     def predict_goal_scorer(
-        self, candidates_df: Optional[DataFrame], model: Optional[PipelineModel] = None
-    ) -> Tuple[List[Dict], Dict]:
-        if candidates_df is None or candidates_df.isEmpty():
-            return [], {}
+        self,
+        candidates_df: Optional[DataFrame],
+        model: Optional[PipelineModel] = None,
+        shot_features: Optional[DataFrame] = None,
+        shot_model: Optional[PipelineModel] = None,
+        goal_frames: Optional[List[int]] = None,
+    ) -> Dict[str, List[Dict]]:
+        """
+        Predice el anotador de cada gol y también detecta tiros cercanos.
+        Devuelve un diccionario con dos listas: 'goals' y 'shots'.
+        """
+        result = {"goals": [], "shots": []}
 
-        if model is not None:
-            # Aplicar modelo
-            scored = model.transform(candidates_df)
-            prob = vector_to_array(col("probability"))
-            scored = scored.withColumn("ml_score", prob.getItem(1))
-            w = Window.partitionBy("goal_id").orderBy(col("ml_score").desc())
-            best = scored.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
-            rows = best.collect()
-        else:
-            # Heurística: usar score más bajo (cercanía a gol, etc.)
-            w = Window.partitionBy("goal_id").orderBy(col("score").asc())
-            best = candidates_df.withColumn("rn", row_number().over(w)).filter(
-                col("rn") == 1
-            )
-            rows = best.collect()
+        if candidates_df is not None and not candidates_df.isEmpty():
+            candidates_df = candidates_df.filter(col("score") < 1000)
 
-        results = []
-        links = {}
-        for row in rows:
-            links[row.player_id] = links.get(row.player_id, 0) + 1
-            results.append(
-                {
+            if candidates_df.isEmpty():
+                return result
+
+            if model is not None:
+                scored = model.transform(candidates_df)
+                prob = vector_to_array(col("probability"))
+                scored = scored.withColumn("ml_score", prob.getItem(1))
+                w = Window.partitionBy("goal_id").orderBy(col("ml_score").desc())
+                best = scored.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+                rows = best.collect()
+            else:
+                w = Window.partitionBy("goal_id").orderBy(col("score").asc())
+                best = candidates_df.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+                best = best.filter(col("inside_goal_area") == True)
+                rows = best.collect()
+
+            for row in rows:
+                result["goals"].append({
                     "goal_id": row.goal_id,
                     "player_id": row.player_id,
                     "track_id": row.track_id,
@@ -110,21 +116,28 @@ class EventDetector:
                     "possession_frame": row.frame_number,
                     "goal_frame": row.goal_frame,
                     "frame_gap": row.frame_gap,
-                    "dist_to_goal_line": (
-                        row.dist_to_goal_line_m
-                        if hasattr(row, "dist_to_goal_line_m")
-                        else 0.0
-                    ),
+                    "dist_to_goal_line": row.dist_to_goal_line_m if hasattr(row, "dist_to_goal_line_m") else 0.0,
                     "score": row.score if hasattr(row, "score") else 0.0,
                     "is_goal": True,
                     "event_type": "goal",
-                }
-            )
-        logfire.info(f"[EventDetector] Linked {len(results)} goals")
-        return results, links
+                })
+
+        if shot_features is not None and not shot_features.isEmpty():
+            if goal_frames is None and candidates_df is not None:
+                goal_frames = [row.goal_frame for row in candidates_df.select("goal_frame").distinct().collect()]
+            shots = self._detect_shots_from_features(shot_features, shot_model, goal_frames)
+            result["shots"] = shots
+
+        logfire.info(
+            f"[EventDetector] Detected {len(result['goals'])} goals and {len(result['shots'])} near-goal shots"
+        )
+        return result
 
     def predict_shots(
-        self, features_df: DataFrame, model: Optional[PipelineModel] = None
+        self,
+        features_df: DataFrame,
+        model: Optional[PipelineModel] = None,
+        goal_frames: Optional[List[int]] = None,
     ) -> DataFrame:
         if features_df.isEmpty():
             return features_df
@@ -152,19 +165,29 @@ class EventDetector:
                 "ball_speed",
             )
         else:
-            # Heurística: balón cerca de gol y con velocidad alta
+            # Heurística: balón dentro del área original de la portería,
+            # o suficientemente cerca de la línea de gol.
+            # (min_shot_speed_kmh / max_shot_speed_kmh ya se aplican aguas
+            # arriba en FeatureEngineer.build_shot_features, igual que antes)
             threshold_m = self.config.near_goal_cm_threshold / 100.0
             heuristic = (
                 features_df.filter(
-                    (col("dist_to_goal_line") <= threshold_m)
-                    & (col("ball_speed") >= self.config.min_shot_speed_kmh)
-                    & (col("angle_to_goal") <= 60)  # umbral de ángulo
+                    (col("inside_shot_area") == True)
+                    | (col("dist_to_goal_line") <= threshold_m)
                 )
                 .withColumn("shot_pred", lit(1))
                 .withColumn("shot_prob", lit(1.0))
             )
-            # Seleccionar por jugador
-            w = Window.partitionBy("player_id").orderBy(col("dist_to_goal_line").asc())
+
+            # No contar como "shot" el propio frame en el que ya se anotó un gol
+            if goal_frames:
+                heuristic = heuristic.filter(~col("frame_number").isin(goal_frames))
+
+            # Seleccionar por jugador: preferir inside_shot_area, luego el más
+            # cercano a la línea de gol (igual que _detect_shots_heuristic)
+            w = Window.partitionBy("player_id").orderBy(
+                col("inside_shot_area").desc(), col("dist_to_goal_line").asc()
+            )
             final = heuristic.withColumn("rn", row_number().over(w)).filter(
                 col("rn") == 1
             )
@@ -354,3 +377,74 @@ class EventDetector:
             .groupBy("player_id")
             .agg(count("*").alias("shots"))
         )
+
+    def _detect_shots_from_features(
+        self,
+        shot_features: DataFrame,
+        shot_model: Optional[PipelineModel] = None,
+        goal_frames: Optional[List[int]] = None,
+    ) -> List[Dict]:
+        """
+        Detecta tiros cercanos a la portería a partir de las características ya generadas.
+        Devuelve lista de dicts con los eventos.
+        """
+        if shot_features.isEmpty():
+            return []
+
+        if shot_model is not None:
+            pred = shot_model.transform(shot_features)
+            prob = vector_to_array(col("probability"))
+            pred = pred.withColumn("shot_prob", prob.getItem(1))
+            pred = pred.withColumn(
+                "shot_pred",
+                when(col("shot_prob") >= self.config.shot_threshold, 1).otherwise(0),
+            )
+            w = Window.partitionBy("player_id").orderBy(col("shot_prob").desc())
+            final = pred.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+            rows = final.collect()
+            shots = []
+            for row in rows:
+                shots.append({
+                    "player_id": row.player_id,
+                    "track_id": row.track_id,
+                    "team_id": row.team_id,
+                    "shirt_number": row.shirt_number,
+                    "possession_frame": row.frame_number,
+                    "shot_frame": row.frame_number,
+                    "dist_to_goal_line": row.dist_to_goal_line,
+                    "speed_kmh": row.ball_speed,
+                    "is_goal": False,
+                    "event_type": "near_goal_shot",
+                    "ml_score": row.shot_prob,
+                })
+            return shots
+        else:
+            threshold_m = self.config.near_goal_cm_threshold / 100.0
+            filtered = shot_features.filter(
+                (col("inside_shot_area") == True) | (col("dist_to_goal_line") <= threshold_m)
+            )
+
+            if goal_frames:
+                filtered = filtered.filter(~col("frame_number").isin(goal_frames))
+
+            w = Window.partitionBy("player_id").orderBy(
+                col("inside_shot_area").desc(),
+                col("dist_to_goal_line").asc()
+            )
+            best = filtered.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+            rows = best.collect()
+            shots = []
+            for row in rows:
+                shots.append({
+                    "player_id": row.player_id,
+                    "track_id": row.track_id,
+                    "team_id": row.team_id,
+                    "shirt_number": row.shirt_number,
+                    "possession_frame": row.frame_number,
+                    "shot_frame": row.frame_number,
+                    "dist_to_goal_line": row.dist_to_goal_line,
+                    "speed_kmh": row.ball_speed,
+                    "is_goal": False,
+                    "event_type": "near_goal_shot",
+                })
+            return shots
