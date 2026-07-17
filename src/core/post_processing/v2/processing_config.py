@@ -16,8 +16,8 @@ class PostProcessingConfig:
     # Umbrales para detección
     possession_threshold: float = 0.5
     shot_threshold: float = 0.4
-    goal_association_window: float = 5.0        # segundos
-    min_possession_seconds: float = 0.09
+    goal_association_window: float = 8.0        # segundos
+    min_possession_seconds: float = 0.1
 
     # Limpieza de balón
     min_ball_confidence: float = 0.25
@@ -27,6 +27,7 @@ class PostProcessingConfig:
     max_ball_accel_mss: float = 150.0
     static_speed_threshold: float = 0.5         # km/h
     static_frame_threshold: int = 8
+    goal_zone_margin_px: float = 150.0
 
     # Interpolación
     max_interpolation_gap: int = 10
@@ -44,9 +45,10 @@ class PostProcessingConfig:
     # Otros
     possession_lookback_frames: int = 30
     possession_lookback_seconds: float = 2.0
-    shot_lookahead_frames: int = 15
-    shot_lookahead_seconds: float = 1.0
+    shot_lookahead_frames: int = 30
+    shot_lookahead_seconds: float = 2.0
+    shot_event_gap_frames: int = 45
     min_shot_speed_kmh: float = 20.0
     max_shot_speed_kmh: float = 120.0
-    near_goal_cm_threshold: float = 200.0       # cm
-    goal_area_reduction_factor: float = 0.75    # 75% del área original
+    near_goal_cm_threshold: float = 300.0       # cm
+    goal_area_reduction_factor: float = 0.75

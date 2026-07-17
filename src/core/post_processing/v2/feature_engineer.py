@@ -256,17 +256,6 @@ class FeatureEngineer:
             "frame_gap", col("g.frame_number") - col("p.frame_number")
         )
 
-        
-        candidates = candidates.fillna({
-            "frame_gap": self.config.possession_lookback_frames,
-            "ball_to_goal_dist_px": 1000.0,
-            "dist_to_goal_line_m": 10.0,
-            "player_speed": 0.0,
-            "ball_speed": 0.0,
-            "ball_conf_at_goal": 0.5,
-            "inside_goal_area": False
-        })
-
         # Score heurístico para fallback
         candidates = candidates.withColumn(
             "score",
@@ -304,6 +293,15 @@ class FeatureEngineer:
             col("inside_goal_area"),
             col("score"),
         )
+
+        features = features.fillna({
+            "frame_gap": self.config.possession_lookback_frames,
+            "ball_to_goal_dist_px": 1000.0,
+            "dist_to_goal_line_m": 10.0,
+            "player_speed": 0.0,
+            "ball_speed": 0.0,
+            "inside_goal_area": False
+        })
 
         logfire.info(
             f"[FeatureEngineer] Built goal linking candidates: {features.count()}"

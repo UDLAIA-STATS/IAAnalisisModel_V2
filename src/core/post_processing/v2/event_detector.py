@@ -12,6 +12,7 @@ from pyspark.sql.functions import (
     sum as spark_sum,
     max as spark_max,
     min as spark_min,
+    coalesce, get as array_get,
 )
 
 from pyspark.sql.types import DoubleType, IntegerType, StructType, StructField
@@ -23,6 +24,7 @@ import logfire
 from typing import Optional, List, Dict, Tuple
 
 from src.core.services.global_value_store import value_store
+
 
 class EventDetector:
     def __init__(self, config: PostProcessingConfig):
@@ -38,7 +40,7 @@ class EventDetector:
         if model is not None:
             pred = model.transform(features_df)
             prob = vector_to_array(col("probability"))
-            pred = pred.withColumn("possession_prob", prob.getItem(1))
+            pred = pred.withColumn("possession_prob", coalesce(array_get(prob, lit(1.0)), lit(0.0)))
             pred = pred.withColumn(
                 "possession_pred",
                 when(
@@ -96,36 +98,51 @@ class EventDetector:
             if model is not None:
                 scored = model.transform(candidates_df)
                 prob = vector_to_array(col("probability"))
-                scored = scored.withColumn("ml_score", prob.getItem(1))
+                scored = scored.withColumn("ml_score", coalesce(array_get(prob, lit(1.0)), lit(0.0)))
                 w = Window.partitionBy("goal_id").orderBy(col("ml_score").desc())
-                best = scored.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+                best = scored.withColumn("rn", row_number().over(w)).filter(
+                    col("rn") == 1
+                )
                 rows = best.collect()
             else:
                 w = Window.partitionBy("goal_id").orderBy(col("score").asc())
-                best = candidates_df.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+                best = candidates_df.withColumn("rn", row_number().over(w)).filter(
+                    col("rn") == 1
+                )
                 best = best.filter(col("inside_goal_area") == True)
                 rows = best.collect()
 
             for row in rows:
-                result["goals"].append({
-                    "goal_id": row.goal_id,
-                    "player_id": row.player_id,
-                    "track_id": row.track_id,
-                    "team_id": row.team_id,
-                    "shirt_number": row.shirt_number,
-                    "possession_frame": row.frame_number,
-                    "goal_frame": row.goal_frame,
-                    "frame_gap": row.frame_gap,
-                    "dist_to_goal_line": row.dist_to_goal_line_m if hasattr(row, "dist_to_goal_line_m") else 0.0,
-                    "score": row.score if hasattr(row, "score") else 0.0,
-                    "is_goal": True,
-                    "event_type": "goal",
-                })
+                result["goals"].append(
+                    {
+                        "goal_id": row.goal_id,
+                        "player_id": row.player_id,
+                        "track_id": row.track_id,
+                        "team_id": row.team_id,
+                        "shirt_number": row.shirt_number,
+                        "possession_frame": row.frame_number,
+                        "goal_frame": row.goal_frame,
+                        "frame_gap": row.frame_gap,
+                        "dist_to_goal_line": (
+                            row.dist_to_goal_line_m
+                            if hasattr(row, "dist_to_goal_line_m")
+                            else 0.0
+                        ),
+                        "score": row.score if hasattr(row, "score") else 0.0,
+                        "is_goal": True,
+                        "event_type": "goal",
+                    }
+                )
 
         if shot_features is not None and not shot_features.isEmpty():
             if goal_frames is None and candidates_df is not None:
-                goal_frames = [row.goal_frame for row in candidates_df.select("goal_frame").distinct().collect()]
-            shots = self._detect_shots_from_features(shot_features, shot_model, goal_frames)
+                goal_frames = [
+                    row.goal_frame
+                    for row in candidates_df.select("goal_frame").distinct().collect()
+                ]
+            shots = self._detect_shots_from_features(
+                shot_features, shot_model, goal_frames
+            )
             result["shots"] = shots
 
         logfire.info(
@@ -145,14 +162,13 @@ class EventDetector:
         if model is not None:
             pred = model.transform(features_df)
             prob = vector_to_array(col("probability"))
-            pred = pred.withColumn("shot_prob", prob.getItem(1))
+            pred = pred.withColumn("shot_prob", coalesce(array_get(prob, lit(1.0)), lit(0.0)))
             pred = pred.withColumn(
                 "shot_pred",
                 when(col("shot_prob") >= self.config.shot_threshold, 1).otherwise(0),
             )
-            # Seleccionar mejores por jugador (el de mayor probabilidad)
-            w = Window.partitionBy("player_id").orderBy(col("shot_prob").desc())
-            final = pred.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+            qualifying = pred.filter(col("shot_pred") == 1)
+            final = self._cluster_shot_events(qualifying, [col("shot_prob").desc()])
             return final.select(
                 "player_id",
                 "track_id",
@@ -165,10 +181,6 @@ class EventDetector:
                 "ball_speed",
             )
         else:
-            # Heurística: balón dentro del área original de la portería,
-            # o suficientemente cerca de la línea de gol.
-            # (min_shot_speed_kmh / max_shot_speed_kmh ya se aplican aguas
-            # arriba en FeatureEngineer.build_shot_features, igual que antes)
             threshold_m = self.config.near_goal_cm_threshold / 100.0
             heuristic = (
                 features_df.filter(
@@ -178,20 +190,13 @@ class EventDetector:
                 .withColumn("shot_pred", lit(1))
                 .withColumn("shot_prob", lit(1.0))
             )
-
-            # No contar como "shot" el propio frame en el que ya se anotó un gol
             if goal_frames:
                 heuristic = heuristic.filter(~col("frame_number").isin(goal_frames))
 
-            # Seleccionar por jugador: preferir inside_shot_area, luego el más
-            # cercano a la línea de gol (igual que _detect_shots_heuristic)
-            w = Window.partitionBy("player_id").orderBy(
-                col("inside_shot_area").desc(), col("dist_to_goal_line").asc()
+            final = self._cluster_shot_events(
+                heuristic,
+                [col("inside_shot_area").desc(), col("dist_to_goal_line").asc()],
             )
-            final = heuristic.withColumn("rn", row_number().over(w)).filter(
-                col("rn") == 1
-            )
-
             logfire.info("[EventDetector] Predicted shots: " + str(final.count()))
             return final.select(
                 "player_id",
@@ -215,7 +220,7 @@ class EventDetector:
         if model_cx is None or model_cy is None:
             return None
         # Generar DataFrame con todos los frames
-        frames = [(match_id, i, i * i) for i in range(total_frames)]
+        frames = [(match_id, i, float(i * i)) for i in range(total_frames)]
         schema = StructType(
             [
                 StructField("match_id", IntegerType(), True),
@@ -318,7 +323,10 @@ class EventDetector:
             .withColumn("x2", col("interp_cx") + 10)
             .withColumn("y2", col("interp_cy") + 10)
             .withColumn("confidence", lit(0.5))
-            .withColumn("timestamp", col("frame_number") / int(value_store.get("frame_rate", 40)))
+            .withColumn(
+                "timestamp",
+                col("frame_number") / int(value_store.get("frame_rate", 40)),
+            )
             .withColumn("area", lit(400.0))
             .withColumn("dx", lit(0.0))
             .withColumn("dy", lit(0.0))
@@ -335,9 +343,7 @@ class EventDetector:
 
         return interp_all
 
-    def compute_possession_time(
-        self, possession_df: DataFrame
-    ) -> DataFrame:
+    def compute_possession_time(self, possession_df: DataFrame) -> DataFrame:
         if possession_df.isEmpty():
             return possession_df
         # Asumimos que possession_df tiene frame_number, player_id, possession_pred (1/0)
@@ -384,27 +390,22 @@ class EventDetector:
         shot_model: Optional[PipelineModel] = None,
         goal_frames: Optional[List[int]] = None,
     ) -> List[Dict]:
-        """
-        Detecta tiros cercanos a la portería a partir de las características ya generadas.
-        Devuelve lista de dicts con los eventos.
-        """
         if shot_features.isEmpty():
             return []
 
         if shot_model is not None:
             pred = shot_model.transform(shot_features)
             prob = vector_to_array(col("probability"))
-            pred = pred.withColumn("shot_prob", prob.getItem(1))
+            pred = pred.withColumn("shot_prob", coalesce(array_get(prob, lit(1.0)), lit(0.0)))
             pred = pred.withColumn(
                 "shot_pred",
                 when(col("shot_prob") >= self.config.shot_threshold, 1).otherwise(0),
             )
-            w = Window.partitionBy("player_id").orderBy(col("shot_prob").desc())
-            final = pred.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
+            qualifying = pred.filter(col("shot_pred") == 1)
+            final = self._cluster_shot_events(qualifying, [col("shot_prob").desc()])
             rows = final.collect()
-            shots = []
-            for row in rows:
-                shots.append({
+            return [
+                {
                     "player_id": row.player_id,
                     "track_id": row.track_id,
                     "team_id": row.team_id,
@@ -416,26 +417,25 @@ class EventDetector:
                     "is_goal": False,
                     "event_type": "near_goal_shot",
                     "ml_score": row.shot_prob,
-                })
-            return shots
+                }
+                for row in rows
+            ]
         else:
             threshold_m = self.config.near_goal_cm_threshold / 100.0
             filtered = shot_features.filter(
-                (col("inside_shot_area") == True) | (col("dist_to_goal_line") <= threshold_m)
+                (col("inside_shot_area") == True)
+                | (col("dist_to_goal_line") <= threshold_m)
             )
-
             if goal_frames:
                 filtered = filtered.filter(~col("frame_number").isin(goal_frames))
 
-            w = Window.partitionBy("player_id").orderBy(
-                col("inside_shot_area").desc(),
-                col("dist_to_goal_line").asc()
+            best = self._cluster_shot_events(
+                filtered,
+                [col("inside_shot_area").desc(), col("dist_to_goal_line").asc()],
             )
-            best = filtered.withColumn("rn", row_number().over(w)).filter(col("rn") == 1)
             rows = best.collect()
-            shots = []
-            for row in rows:
-                shots.append({
+            return [
+                {
                     "player_id": row.player_id,
                     "track_id": row.track_id,
                     "team_id": row.team_id,
@@ -446,5 +446,29 @@ class EventDetector:
                     "speed_kmh": row.ball_speed,
                     "is_goal": False,
                     "event_type": "near_goal_shot",
-                })
-            return shots
+                }
+                for row in rows
+            ]
+
+    def _cluster_shot_events(self, df: DataFrame, order_by_cols: list) -> DataFrame:
+        """
+        Groups a player's qualifying shot frames into discrete attempts based on
+        frame-gap, instead of collapsing to a single best row per player for the
+        whole match. Keeps one representative row per (player, event) using
+        order_by_cols to pick the best frame within each burst.
+        """
+        w_seq = Window.partitionBy("player_id").orderBy("frame_number")
+        prev_frame = lag("frame_number", 1).over(w_seq)
+        new_event = when(
+            prev_frame.isNull()
+            | ((col("frame_number") - prev_frame) > self.config.shot_event_gap_frames),
+            1,
+        ).otherwise(0)
+        df = df.withColumn("shot_event_id", spark_sum(new_event).over(w_seq))
+
+        w_rep = Window.partitionBy("player_id", "shot_event_id").orderBy(*order_by_cols)
+        return (
+            df.withColumn("rn", row_number().over(w_rep))
+            .filter(col("rn") == 1)
+            .drop("rn", "shot_event_id")
+        )

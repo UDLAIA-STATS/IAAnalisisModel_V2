@@ -121,9 +121,9 @@ class PhysicsProcessing(PhysicsCalculatorBase):
                 speed_kmh = float(speed_ms) * 3.6
 
                 if speed_kmh > 20:
-                    logfire.warning(
-                        f"[PhysicsProcessing] Player {state.player_id} moved too fast {speed_kmh} km/h in frame {state.frame_number}"
-                    )
+                    # logfire.warning(
+                    #     f"[PhysicsProcessing] Player {state.player_id} moved too fast {speed_kmh} km/h in frame {state.frame_number}"
+                    # )
                     speed_kmh = 12.5
                     vf = vf / np.linalg.norm(vf) * speed_kmh if np.linalg.norm(vf) > 0 else vf
 

@@ -58,6 +58,26 @@ class ModelTrainer:
             # historical_df = spark.read.parquet(MODELS_TRAINING_DIR.as_posix())
             if model:
                 return model
+        
+
+        distinc_labels = df.select(label_col).distinct().count()
+        if distinc_labels < 2:
+            if model_path:
+                other_models = list(pathlib.Path(model_path).parent.glob(f"{model_path.split('/')[-1].split("_")[0]}*"))
+                if len(other_models) > 1:
+                    last_model = other_models[-1]
+                    logfire.warning(
+                        f"[ModelTrainer] Multiple models found for {model_path}; using {last_model}"
+                    )
+                    model = self._load_model(last_model.as_posix())
+                    if model:
+                        return model
+
+            logfire.warning(
+                f"[ModelTrainer] Only one class present for {label_col}; skipping ML."
+            )
+            return None
+
 
         assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
         scaler = StandardScaler(
