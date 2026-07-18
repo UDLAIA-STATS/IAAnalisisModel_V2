@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
-
-from src.entities.models.app.queue_model import TaskStep, Task
+from sqlalchemy.orm import selectinload
+from src.entities.models.requests.queue_model import TaskStep, Task
 
 
 class TaskRepository:
@@ -8,6 +8,11 @@ class TaskRepository:
     def get_task(task_id: str, session: Session) -> Task | None:
         query = select(Task).where(Task.id == task_id)
         return session.exec(query).first()
+    
+    @staticmethod
+    def get_tasks(session: Session) -> list[Task]:
+        query = select(Task)
+        return list(session.exec(query).all())
 
     @staticmethod
     def upsert_task(task: Task, session: Session):

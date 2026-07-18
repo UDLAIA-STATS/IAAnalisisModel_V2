@@ -8,8 +8,8 @@ import torch
 from ultralytics.models import YOLO
 from ultralytics.engine.results import Results
 from supervision.detection.core import Detections
+from cv2.typing import MatLike
 
-from src.core.database import connection_manager
 from src.entities.models.app.track_data import TrackData
 from src.entities.models.app.video_item import VideoItem
 from src.entities.types.detector_types import DetectorTypes
@@ -50,7 +50,7 @@ class DetectorBase:
     def __exit__(self, exc_type, exc, tb):
         pass
 
-    def detect(self, frame) -> Sequence[Union[Results, Detections]]:
+    def detect(self, frame: MatLike) -> Sequence[Union[Results, Detections]]:
         """Detect objects in a frame."""
         if self.type == DetectorTypes.TRACKING and self.tracker_config_file is not None:
             return self.model.track(
@@ -82,7 +82,7 @@ class DetectorBase:
             annotator = self.classes[object_id]
             annotator.set_detections(filtered_detections)
 
-            data = list(self._extract_tracks_data(filtered_detections, video_item))  # type: ignore
+            data = list(self._extract_tracks_data(filtered_detections))  # type: ignore
 
             if object_id not in detections_map:
                 detections_map[object_id] = data
@@ -92,7 +92,7 @@ class DetectorBase:
         return detections_map
 
     # TODO: At the return of the item the detection mixes with others objects, it needs to be separated
-    def _extract_tracks_data(self, detections: Detections, video_item: VideoItem) -> Generator[TrackData, None, None]:
+    def _extract_tracks_data(self, detections: Detections) -> Generator[TrackData, None, None]:
         for i in range(len(detections)):
             if detections is None:
                 continue
@@ -100,12 +100,11 @@ class DetectorBase:
             x1, y1, x2, y2 = map(int, detections.xyxy[i])
 
             if detections.confidence is None:
-                logfire.warning(f"[DetectorBase] No confidence for object in frame {video_item.frame_num} match id {video_item.match_id}")
                 conf = 0.3
             else:
                 conf = detections.confidence[i]
 
-            if self.type == DetectorTypes.TRACKING:
+            if self.type == DetectorTypes.TRACKING and detections.tracker_id is not None:
                 track_id = detections.tracker_id[i]  # type: ignore
             else:
                 track_id = 0
@@ -114,6 +113,7 @@ class DetectorBase:
 
     def get_tracks(self, video_item: VideoItem, object_ids: List[int], session: Session):
         detections = self.detect(video_item.frame)
+
         track_data = self.extract_detections(detections, object_ids, video_item)
 
         for object_id, data in track_data.items():

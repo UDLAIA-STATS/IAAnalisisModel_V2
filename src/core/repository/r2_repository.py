@@ -41,6 +41,10 @@ class R2Repository:
 
     def steam_download(self, key: str, destination_path: str, chunk_size=1024 * 1024 * 16):
         return self.manager.stream_download(key, destination_path, chunk_size)
+    
+    def download_player_image(self, key: str, destination_path: str, chunk_size=1024 * 1024 * 16):
+        return self.manager.download_image(key, destination_path, chunk_size)
+
 
 
 files_repository = R2Repository()

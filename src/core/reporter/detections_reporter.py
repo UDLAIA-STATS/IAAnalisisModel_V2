@@ -1,240 +1,97 @@
-import csv
-from pathlib import Path
 from typing import List
 import uuid
 
-import logfire
-import pandas as pd
-import matplotlib.pyplot as plt
-
-from pydantic import BaseModel
 from sqlmodel import Session
 
-from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
-from src.core.repository.ball_repository import BallRepository
-from src.core.repository.goal_repository import GoalRepository
 from src.core.repository.player_repository import PlayerRepository
+from src.entities.types.bucket_types import FilePurposeTypes
+from src.entities.models.app.report_models import ReportRow
+from src.entities.reporter.detections_reporter_base import DetectionsReporterBase
+from src.entities.reporter.match_spatial_analyzer import MatchSpatialAnalyzer
+from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
+from src.config.configuration import settings
 
+class DetectionsReporter(DetectionsReporterBase):
+    def __init__(self):
+        
+        super().__init__()
+        self.spatial_analyzer = MatchSpatialAnalyzer()
 
-class ReportRow(BaseModel):
-    frame_number: int
-    object_type: str
-    track_id: int
-    bbox: str
-    confidence: float
-    shirt_color: str = ""
-    shirt_number: str = ""
-    speed: float = 0.0
-    distance: float = 0.0
-    timestamp: int
-
-
-class DetectionsReporter:
     def generate_report(self, match_id: int, session: Session):
-        report_rows: List[ReportRow] = []
+        report_rows: List[ReportRow] = self.get_report_rows(match_id, session)
 
-        report_rows.extend(self.get_goals(match_id, session))
-        report_rows.extend(self.get_balls(match_id, session))
-        report_rows.extend(self.get_players(match_id, session))
-
-        report_name = (
+        report_path = (
             DETECTED_OBJECTS_METRICS_DIR / f"report_{match_id}_{uuid.uuid4()}.csv"
         )
 
-        with open(report_name, mode="w", newline="", encoding="utf-8") as file:
-            csv_writer = csv.writer(file)
+        self.write_detections_report(report_path, report_rows)
+        number_report = self.generate_number_report(match_id, session)
 
-            csv_writer.writerow(
-                [
-                    "frame_number",
-                    "object_type",
-                    "track_id",
-                    "bbox",
-                    "confidence",
-                    "shirt_color",
-                    "shirt_number",
-                    "speed",
-                    "distance",
-                    "timestamp",
-                ]
-            )
-
-            for row in report_rows:
-                csv_writer.writerow(
-                    [
-                        row.frame_number,
-                        row.object_type,
-                        row.track_id,
-                        row.bbox,
-                        row.confidence,
-                        row.shirt_color,
-                        row.shirt_number,
-                        row.speed,
-                        row.distance,
-                        row.timestamp,
-                    ]
-                )
-
-        logfire.info(f"[DetectionsReporter] Report generated: {report_name.as_posix()}")
-        self.generate_diagrams(report_name)
-
-    def get_balls(self, match_id: int, session: Session) -> list[ReportRow]:
-        balls = BallRepository.get_balls_by_match_id(match_id, session)
-        report_rows: List[ReportRow] = []
-
-        for ball in balls:
-            bbox = f"{ball.x1}, {ball.y1}, {ball.x2}, {ball.y2}"
-            report_rows.append(
-                ReportRow(
-                    frame_number=ball.frame_number,
-                    object_type="ball",
-                    track_id=0,
-                    bbox=bbox,
-                    confidence=ball.confidence,
-                    timestamp=ball.timestamp,
-                )
-            )
-
-        return report_rows
-
-    def get_players(self, match_id: int, session: Session) -> list[ReportRow]:
-        players = PlayerRepository.get_players_by_match_id(match_id, session)
-
-        report_rows: List[ReportRow] = []
-
-        for player in players:
-            states = player.states
-            for state in states:
-                bbox = f"{state.x1}, {state.y1}, {state.x2}, {state.y2}"
-                report_rows.append(
-                    ReportRow(
-                        frame_number=state.frame_number,
-                        object_type="player",
-                        track_id=player.track_id,
-                        bbox=bbox,
-                        confidence=state.confidence,
-                        speed=state.speed_kmh,
-                        distance=state.distance_meters,
-                        shirt_color=player.team_color,
-                        shirt_number=str(player.shirt_number),
-                        timestamp=state.timestamp,
-                    )
-                )
-
-        return report_rows
-
-    def get_goals(self, match_id: int, session: Session) -> list[ReportRow]:
-        goals = GoalRepository.get_goals_by_match_id(match_id, session)
-
-        report_rows: List[ReportRow] = []
-
-        for goal in goals:
-            bbox = f"{goal.x1}, {goal.y1}, {goal.x2}, {goal.y2}"
-            report_rows.append(
-                ReportRow(
-                    frame_number=goal.frame_number,
-                    object_type="goal",
-                    track_id=0,
-                    bbox=bbox,
-                    confidence=goal.confidence,
-                    timestamp=goal.timestamp,
-                )
-            )
-
-        return report_rows
-
-    def generate_diagrams(self, report_path: Path):
-        """
-        Generates:
-        1. Recognition frequency per player
-        2. Average confidence per player
-        3. Tracking persistence
-        """
-
-        df = pd.read_csv(report_path)
-
-        # Keep only player detections
-        players_df = df[df["object_type"] == "player"]
-
-        if players_df.empty:
-            logfire.warning("[DetectionsReporter] No player data found")
-            return
-
-        diagrams_dir = report_path.parent / "diagrams"
-        diagrams_dir.mkdir(exist_ok=True)
-
-        # =========================================================
-        # 1. PLAYER RECOGNITION COUNT
-        # =========================================================
-
-        recognition_counts = (
-            players_df.groupby("shirt_number").size().sort_values(ascending=False)
+        class_chart_str, time_chart_str, dynamics_chart_str, heatmap_chart_str = (
+            self.generate_diagrams(report_path, match_id)
         )
 
-        plt.figure(figsize=(10, 6))
 
-        recognition_counts.plot(kind="bar")
-
-        plt.title("Player Recognition Frequency")
-        plt.xlabel("Shirt Number")
-        plt.ylabel("Recognition Count")
-
-        plt.tight_layout()
-
-        recognition_chart = (
-            diagrams_dir / f"recognition_frequency_{report_path.stem}.png"
+        speed_chart, distance_chart = self.generate_per_player_timeseries(
+            report_path, match_id
         )
 
-        plt.savefig(recognition_chart)
-        plt.close()
+        (
+            scatter_chart,
+            voronoi_chart,
+            velocity_kde_chart,
+            dist_matrix_chart,
+            traj_chart,
+        ) = self.spatial_analyzer.generate_spatial_diagrams(report_path, match_id)
+        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(report_path, match_id, session) 
+        
 
-        # =========================================================
-        # 2. AVERAGE CONFIDENCE
-        # =========================================================
 
-        avg_confidence = (
-            players_df.groupby("shirt_number")["confidence"]
-            .mean()
-            .sort_values(ascending=False)
+        reports = [
+            ("report_detections", report_path.as_posix()),
+            ("class_chart", class_chart_str),
+            ("time_chart", time_chart_str),
+            ("dynamics_chart", dynamics_chart_str),
+            ("heatmap_chart", heatmap_chart_str),
+            ("speed_chart", speed_chart),
+            ("distance_chart", distance_chart),
+            ("position_velocity_scatter", scatter_chart),
+            ("voronoi_territories", voronoi_chart),
+            ("velocity_kde_by_team", velocity_kde_chart),
+            ("team_distance_matrix", dist_matrix_chart),
+            ("movement_trajectories", traj_chart),
+            ("number_report", number_report),
+        ]
+
+
+
+        chart_keys = self.upload_reports(reports, match_id)
+
+        for player_id, heatmap_path in player_heatmaps:
+            key = self.upload_report(heatmap_path, match_id, FilePurposeTypes.HEATMAP)
+            PlayerRepository.upload_heatmap(player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session)
+        
+        PlayerRepository.upload_match_files(
+            settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["heatmap_chart"],
+            settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["movement_trajectories"],
+            match_id,
+            session,
         )
 
-        plt.figure(figsize=(10, 6))
-
-        avg_confidence.plot(kind="bar")
-
-        plt.title("Average Recognition Confidence")
-        plt.xlabel("Shirt Number")
-        plt.ylabel("Average Confidence")
-
-        plt.tight_layout()
-
-        confidence_chart = diagrams_dir / f"average_confidence_{report_path.stem}.png"
-
-        plt.savefig(confidence_chart)
-        plt.close()
-
-        # =========================================================
-        # 3. TRACKING PERSISTENCE
-        # =========================================================
-
-        persistence = (
-            players_df.groupby("shirt_number")["frame_number"]
-            .agg(lambda x: x.max() - x.min())
-            .sort_values(ascending=False)
-        )
-
-        plt.figure(figsize=(10, 6))
-
-        persistence.plot(kind="bar")
-
-        plt.title("Tracking Persistence")
-        plt.xlabel("Shirt Number")
-        plt.ylabel("Frames Persisted")
-
-        plt.tight_layout()
-
-        persistence_chart = (
-            diagrams_dir / f"tracking_persistence_{report_path.stem}.png"
+        return (
+            chart_keys["report_detections"],
+            chart_keys["class_chart"],
+            chart_keys["time_chart"],
+            chart_keys["dynamics_chart"],
+            chart_keys["heatmap_chart"],
+            chart_keys["speed_chart"],
+            chart_keys["distance_chart"],
+            chart_keys["position_velocity_scatter"],
+            chart_keys["voronoi_territories"],
+            chart_keys["velocity_kde_by_team"],
+            chart_keys["team_distance_matrix"],
+            chart_keys["movement_trajectories"],
+            chart_keys["number_report"],
         )
 
 

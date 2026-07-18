@@ -1,11 +1,17 @@
 from datetime import datetime, timezone
+from sqlmodel import func
 from uuid import uuid4
 
 from sqlmodel import Field, SQLModel
 
 
 class NumericIdModel(SQLModel):
-    id: int = Field(primary_key=True, index=True, default=None, sa_column_kwargs={"autoincrement": True})
+    id: int = Field(
+        primary_key=True,
+        index=True,
+        default=None,
+        sa_column_kwargs={"autoincrement": True},
+    )
 
 
 class UUIDModel(SQLModel):
@@ -13,10 +19,13 @@ class UUIDModel(SQLModel):
 
 
 class AuditTable(SQLModel):
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column_kwargs={"server_default": func.now()},
+    )
     updated_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        sa_column_kwargs={"onupdate": datetime.now(timezone.utc)},
+        sa_column_kwargs={"onupdate": func.now()},
     )
 
 

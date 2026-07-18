@@ -29,5 +29,5 @@ class DynamicMovementModel(SQLModel):
 
 class SoccerFrameData(SQLModel):
     frame_number: int = Field(index=True)
-    timestamp: int = Field(index=True)
-    confidence: float
+    timestamp: float = Field(index=True, decimal_places=10)
+    confidence: float = Field(decimal_places=6)

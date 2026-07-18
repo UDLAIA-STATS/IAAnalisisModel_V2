@@ -73,3 +73,38 @@ class R2Manager(R2ManagerBase):
             logfire.error(f"Error descargando {key} desde R2: {e}")
             Path(destination_path).unlink(missing_ok=True)
             raise e
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=4, max=10) + wait_incrementing(start=0, increment=2, max=10),
+        reraise=True,
+        )
+    def download_image(
+        self, key: str, destination_path: str, chunk_size=1024 * 1024 * 16
+    ):
+        """
+        Descarga el archivo en chunks (16 MB por defecto).
+        Soporta archivos grandes (+5GB).
+        """
+        try:
+            logfire.info(f"[R2 Manager] Descargando {key} a {destination_path}...")
+            with open(destination_path, "wb") as f:
+                obj = self.client.get_object(Bucket=self.data_bucket, Key=key)
+                body = obj["Body"]
+
+                while True:
+                    chunk = body.read(chunk_size)
+                    if not chunk:
+                        logfire.info("[R2 Manager] Descarga completada.")
+                        break
+
+                    f.write(chunk)
+                    f.flush()
+        except (BotoCoreError, ClientError, ReadTimeoutError) as e:
+            logfire.error(f"Error descargando {key} desde R2: {e}")
+            Path(destination_path).unlink(missing_ok=True)
+            raise e
+        except Exception as e:
+            logfire.error(f"Error descargando {key} desde R2: {e}")
+            Path(destination_path).unlink(missing_ok=True)
+            raise e
