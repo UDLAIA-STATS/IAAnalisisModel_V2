@@ -60,6 +60,8 @@ class ValidationProcess:
 
             PostProcessor(request.match_id, session=session, config=PostProcessingConfig(frame_rate=fps)).run()
 
+            player_crop_validator.validate_match(request.match_id, session)
+
             number_postprocessing.process(request.match_id, session)
             # ball_predictor_cls.predict(request.match_id, total_frames, session)
             # goal_validator_cls.validate(request.match_id, session)
@@ -69,7 +71,6 @@ class ValidationProcess:
 
             # events_analyzer.analyze(request.match_id, session)
 
-            # player_crop_validator.validate_match(request.match_id, session)
 
             validate_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(validate_step, session)

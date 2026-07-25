@@ -18,17 +18,6 @@ from src.core.video.annotators import player_annotator
 from src.core.repository import PlayerStatesRepository, files_repository, TaskRepository
 from src.core.vision.number_recognizer import number_predictor
 
-# Object detection --> Video Frame
-# Number and color recognition --> Video Frame
-# Physics computation --> Video Frame
-
-# Team assigment --> DB
-# Ball assignment --> Db
-# Goal interaction --> DB
-
-# Heatmap --> DB
-# Data post processing
-# Document uplaod --> Post
 
 
 class VideoDownload(AnalysisStepHandler):
@@ -94,15 +83,14 @@ class NumberAndColorRecognition(AnalysisStepHandler):
         try:
             session.commit()
             labels = jersey_color_extractor.recognize(video_item, session)
-            if self.number_scan == 0 or self.number_scan + 120 < video_item.frame_num:
-                numbers = number_predictor.predict(video_item.match_id, video_item, session)
-                for number, label in zip(numbers, labels):
-                    id = label.split("|")[0].split(":")[1].strip()
-                    
-                    if id != number.player_id:
-                        continue
+            numbers = number_predictor.predict(video_item.match_id, video_item, session)
+            for number, label in zip(numbers, labels):
+                id = label.split("|")[0].split(":")[1].strip()
+                
+                if id != number.player_id:
+                    continue
 
-                    label += f" | Number: {number.number}"
+                label += f" | Number: {number.number}"
 
             if len(labels) == len(player_annotator.get_detections()):
                 video_item.annotated_frame = player_annotator.annotate(

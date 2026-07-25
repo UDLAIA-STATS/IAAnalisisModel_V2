@@ -34,7 +34,7 @@ class PlayerTracker(DetectorBase):
 
     @override
     def __init_model__(self, model: Path, half: bool = False):
-        self.model: YOLO = YOLO("yolo26x.pt")
+        self.model: YOLO = YOLO(model.as_posix())
 
         if model.suffix == ".pt":
             self.model.to(self.device)

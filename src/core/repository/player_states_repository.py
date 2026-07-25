@@ -56,11 +56,11 @@ class PlayerStatesRepository:
         )
         results = session.exec(query).all()
 
-        if results is None or len(results) == 0:
-            logfire.error(
-                f"PlayerStatesRepository.get_player_states_by_frame_num: No results found for frame number "
-                f"{frame_number} and match id {match_id} in database"
-            )
+        # if results is None or len(results) == 0:
+        #     logfire.error(
+        #         f"PlayerStatesRepository.get_player_states_by_frame_num: No results found for frame number "
+        #         f"{frame_number} and match id {match_id} in database"
+        #     )
         return results
 
     @staticmethod
@@ -203,3 +203,4 @@ class PlayerStatesRepository:
 
         return list(below_states), list(correct_states)
 
+    

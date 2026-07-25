@@ -1,63 +1,49 @@
 import re
 from typing import List, Optional, Tuple
-import uuid
-
-from easyocr import easyocr
-import logfire
-import torch
-
-from addons.sam3.sam3.model_builder import build_sam3_image_model
-from addons.sam3.sam3.model.sam3_image_processor import Sam3Processor
 
 import cv2
 import numpy as np
-from sqlmodel import Session
+import torch
 from PIL import Image
+import logfire
+from sqlmodel import Session
+from transformers import AutoModelForImageTextToText, AutoProcessor
 
 from src.entities.models.soccer.player_model import PlayerNumbers
 from src.core.utils.video_utils import extract_player_torso
 from src.core.repository.player_states_repository import PlayerStatesRepository
 from src.entities.models.app.video_item import VideoItem
-from src.entities.models.number_recognizer.number_classifier import (
-    JerseyNumberClassifier,
-    NONE_TENS,
-)
-from src.config.routes import NUMBER_MODEL_PATH, OUTPUT_IMAGES_DIR
+from src.entities.models.number_recognizer.number_classifier import NONE_TENS
 
 
 class NumberRecognizer:
-    JERSEY_IMG_SIZE = (128, 80)
-    JERSEY_BACKBONE = "resnet18"
+    MINICPM_MODEL_NAME = "openbmb/MiniCPM-V-4.6"
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
     def __init__(self):
-        self.classifier = JerseyNumberClassifier(
-            NUMBER_MODEL_PATH, self.JERSEY_IMG_SIZE, self.JERSEY_BACKBONE
-        )
+        self.minicpm_model, self.minicpm_processor = self._load_minicpm()
 
-        self.sam3_model = None
-        self.sam3_processor = None
-
+    def _load_minicpm(self):
+        """
+        Loads MiniCPM-Llama3-V-2_5 following the officially recommended
+        pattern: fp16 on CUDA, fp32 on CPU, trust_remote_code=True.
+        """
         try:
-            self.sam3_model = build_sam3_image_model()
-            self.sam3_model = self.sam3_model.float()
-            self.sam3_processor = Sam3Processor(
-                self.sam3_model,
-                device="cuda" if torch.cuda.is_available() else "cpu",
-                confidence_threshold=0.3,
-            )
-            logfire.info(
-                f"SAM3 device type: {next(self.sam3_model.parameters()).dtype}"
-            )
-        except Exception as e:
-            logfire.warning(f"Warning: SAM3 model could not be loaded: {e}")
-            self.sam3_model = None
-            self.sam3_processor = None
+            dtype = torch.float16 if self.DEVICE == "cuda" else torch.float32
 
-        try:
-            self.ocr_reader = easyocr.Reader(["en"], gpu=torch.cuda.is_available())
+            model = AutoModelForImageTextToText.from_pretrained(
+                self.MINICPM_MODEL_NAME, torch_dtype=dtype, trust_remote_code=True
+            )
+            model = model.to(device=self.DEVICE)
+            model.eval()
+
+            processor = AutoProcessor.from_pretrained(
+                self.MINICPM_MODEL_NAME, trust_remote_code=True
+            )
+            return model, processor
         except Exception as e:
-            logfire.warning(f"Warning: EasyOCR could not be initialized: {e}")
-            self.ocr_reader = None
+            logfire.fatal(f"[NumberRecognizer] MiniCPM could not be initialized: {e}")
+            raise e
 
     def predict(
         self, match_id: int, video_item: VideoItem, session: Session
@@ -70,26 +56,31 @@ class NumberRecognizer:
         for state in states:
             bbox = state.x1, state.y1, state.x2, state.y2
             crop = extract_player_torso(video_item.frame, np.array(bbox))
-            parent_dir = OUTPUT_IMAGES_DIR / str(video_item.match_id)
-            parent_dir.mkdir(exist_ok=True, parents=True)
-            cv2.imwrite(parent_dir / f"{uuid.uuid4()}.jpg", crop)
-            player_number = self.classifier.predict(
-                state.player.id, video_item.frame_num, crop
+
+            if crop is None or crop.size == 0:
+                continue
+
+            consensus_number, consensus_conf = self._minicpm_predict(crop)
+
+            if consensus_number is None:
+                logfire.info(
+                    f"[NumberRecognizer] No number detected for player "
+                    f"{state.player.id} at frame {video_item.frame_num}"
+                )
+                continue
+
+            if not (0 < consensus_number <= 99):
+                continue
+
+            player_number = self._build_player_number(
+                player_id=state.player.id,
+                frame_number=video_item.frame_num,
+                consensus_number=consensus_number,
+                consensus_confidence=consensus_conf,
             )
-
-            if (
-                player_number.visible_prob > 0.75
-                and player_number.confidence < 0.5
-                and crop is not None
-                and crop.size > 0
-            ):
-                sam3_number, sam3_conf = self._sam3_predict(crop)
-                if sam3_number is not None:
-                    player_number = self._build_player_number_from_sam3(
-                        player_number, sam3_number, sam3_conf
-                    )
-                    logfire.info(f"[NumberRecognizer] SAM3: {player_number}")
-
+            logfire.info(
+                f"[NumberRecognizer] Number Data: {player_number.model_dump()}"
+            )
             predicted_numbers.append(player_number)
 
         session.add_all(predicted_numbers)
@@ -97,133 +88,150 @@ class NumberRecognizer:
 
         return predicted_numbers
 
-    def _sam3_predict(self, crop_bgr: np.ndarray) -> Tuple[Optional[int], float]:
+    def _preprocess_for_minicpm(self, crop_bgr: np.ndarray) -> np.ndarray:
         """
-        Use SAM3 to locate the jersey number region, then OCR that region.
-        Returns (number, confidence) or (None, 0.0).
+        Preprocesado para MiniCPM: corrección de iluminación (CLAHE) y filtro
+        bilateral para suavizar sin perder color natural.
         """
-        if self.sam3_model is None or self.sam3_processor is None:
-            return None, 0.0
+        lab = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2LAB)
+        l_channel, a_channel, b_channel = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        l_clahe = clahe.apply(l_channel)
 
-        try:
-            crop_rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(crop_rgb)
+        lab_clahe = cv2.merge((l_clahe, a_channel, b_channel))
+        illum_corrected = cv2.cvtColor(lab_clahe, cv2.COLOR_LAB2BGR)
 
-            # with torch.no_grad(), torch.inference_mode(), torch.autocast(
-            #     enabled=False,
-            #     device_type="cuda" if torch.cuda.is_available() else "cpu",
-            #     dtype=torch.float32,
-            # ):
-            #     inference_state = self.sam3_processor.set_image(pil_img)
-            #     # logfire.info(f" SAM3 inference state keys: {inference_state.keys()}")
-            #     output = self.sam3_processor.set_text_prompt(
-            #         state=inference_state, prompt="jersey number"
-            #     )
+        smoothed = cv2.bilateralFilter(
+            illum_corrected, d=7, sigmaColor=50, sigmaSpace=50
+        )
+        return smoothed
 
-            # boxes = output.get("boxes")
-            # scores = output.get("scores")
-
-            # if boxes is None:
-            #     logfire.warning("[SAM3] output sin key 'boxes'")
-            #     return None, 0.0
-
-            # if isinstance(boxes, torch.Tensor):
-            #     if boxes.numel() == 0:
-            #         logfire.warning(
-            #             "[SAM3] boxes vacío (tensor), sin detecciones para 'jersey number'"
-            #         )
-            #         return None, 0.0
-            # else:
-            #     if len(boxes) == 0:
-            #         logfire.warning(
-            #             "[SAM3] boxes vacío (lista), sin detecciones para 'jersey number'"
-            #         )
-            #         return None, 0.0
-
-            # if scores is None:
-            #     logfire.warning("[SAM3] output sin key 'scores'")
-            #     return None, 0.0
-
-            # scores = scores.detach().to(dtype=torch.float32, device="cpu")
-            # boxes = boxes.detach().to(dtype=torch.float32, device="cpu")
-
-            # logfire.info(
-            #     f"[SAM3] {len(boxes)} detecciones, mejor score: {float(scores.max()) if isinstance(scores, torch.Tensor) else max(scores)}"
-            # )
-
-            # best_idx = int(np.argmax(scores).item())
-            # best_box = boxes[best_idx]
-            # sam3_score = float(scores[best_idx].item())
-
-            # x1, y1, x2, y2 = map(int, best_box.tolist())
-            # h, w = crop_bgr.shape[:2]
-            # x1, y1 = max(0, x1), max(0, y1)
-            # x2, y2 = min(w, x2), min(h, y2)
-            # if x2 <= x1 or y2 <= y1:
-            #     return None, 0.0
-
-            # number_roi = crop_bgr[y1:y2, x1:x2]
-            # if number_roi.size == 0:
-            #     return None, 0.0
-
-            ocr_number, ocr_conf = self._ocr_digits(crop_bgr)
-            logfire.info(f"[SAM3] OCR: {ocr_number} ({ocr_conf})")
-            if ocr_number is None:
-                return None, 0.0
-
-            combined_conf = ocr_conf
-            # combined_conf = sam3_score * ocr_conf
-            return ocr_number, combined_conf
-
-        except Exception as e:
-            print(f"SAM3 fallback failed: {e}")
-            return None, 0.0
-
-    def _ocr_digits(self, image_np: np.ndarray) -> Tuple[Optional[int], float]:
-        """
-        Use EasyOCR to extract digits from a cropped image region.
-        Returns (number, confidence) or (None, 0.0).
-        """
-        if self.ocr_reader is None:
+    def _minicpm_predict(
+        self, crop_bgr: np.ndarray
+    ) -> Tuple[Optional[int], float]:
+        """Ejecuta MiniCPM una sola vez por crop."""
+        if self.minicpm_model is None or self.minicpm_processor is None:
             return None, 0.0
         try:
-            # EasyOCR expects RGB image; our crop is BGR from OpenCV
-            rgb = cv2.cvtColor(image_np, cv2.COLOR_BGR2RGB)
-            results = self.ocr_reader.readtext(rgb, allowlist="0123456789", detail=1)
-            if not results:
-                return None, 0.0
-            # Take the first detection with highest confidence
-            best_text, best_conf = None, 0.0
-            for bbox, text, conf in results:
-                digits = re.sub(r"\D", "", text)
-                if digits and conf > best_conf:
-                    best_text = digits
-                    best_conf = conf
-            if best_text:
-                return int(best_text), float(best_conf)
-            return None, 0.0
+            processed = self._preprocess_for_minicpm(crop_bgr)
+            h, w = processed.shape[:2]
+            scale = max(1, 256 // min(h, w))
+
+            processed = cv2.resize(
+                processed,
+                (w * scale, h * scale),
+                interpolation=cv2.INTER_CUBIC,
+            )
+
+            rgb = cv2.cvtColor(processed, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(rgb)
+
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {
+                            "type": "text",
+                            "text": """You are an OCR system. Read the player's jersey number.
+                            Return ONLY the jersey number.
+                            Rules:
+                            - Output digits only.
+                            - Do not explain.
+                            - Do not output spaces.
+                            - If uncertain return None.""",
+                        },
+                    ],
+                }
+            ]
+
+            prompt = self.minicpm_processor.apply_chat_template(
+                messages, add_generation_prompt=True, tokenize=False
+            )
+
+            inputs = self.minicpm_processor(
+                images=[image],
+                text=prompt,
+                return_tensors="pt",
+            )
+
+            inputs = {
+                k: v.to(self.minicpm_model.device) if isinstance(v, torch.Tensor) else v
+                for k, v in inputs.items()
+            }
+
+            output = self.minicpm_model.generate(
+                **inputs,
+                max_new_tokens=8,
+                do_sample=False,
+            )
+
+            generated_ids = output[:, inputs["input_ids"].shape[1]:]
+
+            answer = self.minicpm_processor.batch_decode(
+                generated_ids,
+                skip_special_tokens=True,
+            )
+            logfire.info(f"[NumberRecognizer] MiniCPM answer: {answer}")
+            numb, conf = self._parse_response(answer)
+            logfire.info(f"[NumberRecognizer] Parsed MiniCPM prediction: {numb} ({conf})")
+
+            return numb, conf
         except Exception as e:
-            print(f"OCR failed: {e}")
+            logfire.warning(f"[NumberRecognizer] MiniCPM prediction failed: {e}")
             return None, 0.0
 
-    def _build_player_number_from_sam3(
-        self, original: PlayerNumbers, sam3_number: int, sam3_confidence: float
+    def _parse_response(self, response: str) -> Tuple[Optional[int], float]:
+        """
+        MiniCPM devuelve texto libre, no una confianza numérica.
+        Derivamos una confianza heurística basada en la limpieza de la respuesta.
+        """
+        if not response:
+            return None, 0.0
+
+        text = response.strip().upper()
+        if "NONE" in text:
+            return None, 0.0
+
+        digits = re.sub(r"\D", "", text)
+        if not digits:
+            return None, 0.0
+
+        clean_ratio = len(digits) / max(len(text.replace(" ", "")), 1)
+        length_penalty = (
+            1.0 if len(digits) <= 2 else max(0.3, 1.0 - 0.2 * (len(digits) - 2))
+        )
+        confidence = max(0.05, min(0.95, clean_ratio * length_penalty))
+
+        if len(digits) > 2:
+            digits = digits[-2:]
+
+        return int(digits), float(confidence)
+
+    def _build_player_number(
+        self,
+        player_id: int,
+        frame_number: int,
+        consensus_number: int,
+        consensus_confidence: float,
     ) -> PlayerNumbers:
-        """Create a new PlayerNumbers object based on SAM3 prediction."""
-        # Determine tens and units
-        if sam3_number < 10:
+        """
+        Construye la entidad PlayerNumbers a partir de la única predicción
+        de MiniCPM. visible_prob se iguala a la confianza de la predicción.
+        """
+        if consensus_number < 10:
             tens_pred = NONE_TENS
-            units_pred = sam3_number
+            units_pred = consensus_number
         else:
-            tens_pred = sam3_number // 10
-            units_pred = sam3_number % 10
+            tens_pred = consensus_number // 10
+            units_pred = consensus_number % 10
 
         return PlayerNumbers(
-            player_id=original.player_id,
-            frame_number=original.frame_number,
-            number=sam3_number,
-            confidence=sam3_confidence,
-            visible_prob=original.visible_prob,
+            player_id=player_id,
+            frame_number=frame_number,
+            number=consensus_number,
+            confidence=consensus_confidence,
+            visible_prob=consensus_confidence,
             tens_none_prob=1.0 if tens_pred == NONE_TENS else 0.0,
             tens_pred=tens_pred,
             tens_prob=1.0,

@@ -62,22 +62,22 @@ class VideoPreprocessor:
         delta = self.histogram_delta(small)
         logfire.debug(f"[VideoProcessor] Histogram delta: {delta:.4f}")
 
-        if frame_num <= 30:
-            self.windows_frames.append((frame_num, small, delta, timestamp))
+        # if frame_num <= 15:
+        #     self.windows_frames.append((frame_num, small, delta, timestamp))
             
-            if len(self.windows_frames) == 30:
-                selected = self.windows_frames.copy()
-                self.windows_frames.clear()
-                return [
-                    VideoItem(
-                        annotated_frame=item[1].copy(),
-                        frame=item[1].copy(),
-                        frame_num=item[0],
-                        timestamp=item[3],
-                        match_id=self.match_id
-                )
-                    for item in selected
-                ]
+            # if len(self.windows_frames) == 15:
+            #     selected = self.windows_frames.copy()
+            #     self.windows_frames.clear()
+            #     return [
+            #         VideoItem(
+            #             annotated_frame=item[1].copy(),
+            #             frame=item[1].copy(),
+            #             frame_num=item[0],
+            #             timestamp=item[3],
+            #             match_id=self.match_id
+            #     )
+            #         for item in selected
+            #     ]
 
 
         self.windows_frames.append((frame_num, frame, delta, timestamp))

@@ -70,7 +70,11 @@ class DetectionsReporter(DetectionsReporterBase):
         for player_id, heatmap_path in player_heatmaps:
             key = self.upload_report(heatmap_path, match_id, FilePurposeTypes.HEATMAP)
             PlayerRepository.upload_heatmap(player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session)
-        
+
+
+        velocity_kde_by_team_path = settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["velocity_kde_by_team"]
+        voronoi_territories_path = settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["voronoi_territories"]
+
         PlayerRepository.upload_match_files(
             settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["heatmap_chart"],
             settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["movement_trajectories"],

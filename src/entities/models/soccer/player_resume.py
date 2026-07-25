@@ -8,6 +8,7 @@ class PlayerResume(BaseModel):
 
     team_color: str
     shirt_number: int
+    team_goals: int
     goals: int
     passes: int
 

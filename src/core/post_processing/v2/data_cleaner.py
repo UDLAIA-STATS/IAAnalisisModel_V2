@@ -63,8 +63,6 @@ class DataCleaner:
             .drop("rn")
         )
 
-        # A ball that just went in tends to go static (settles in the net) -
-        # don't let those frames get pruned as "stuck detection" noise.
         goal_zones = self._compute_goal_zones(goals_df)
 
         df = df.withColumn("speed_kmh", coalesce(col("speed_kmh"), lit(0.0)))
@@ -165,10 +163,14 @@ class DataCleaner:
                 + (centers[0][1] - centers[1][1]) ** 2
             )
             if dist < self.config.cluster_distance_threshold:
-                # Usar k=1
-                kmeans = KMeans(featuresCol="features", k=1, seed=42)
+                k = 2
+                if df.count() < 2:
+                    k = 1
+
+                kmeans = KMeans(featuresCol="features", k=k, seed=42)
                 pipeline = Pipeline(stages=[assembler, kmeans])
                 model = pipeline.fit(df)
+
         clustered = model.transform(df)
         clustered = clustered.withColumnRenamed("prediction", "cluster")
 

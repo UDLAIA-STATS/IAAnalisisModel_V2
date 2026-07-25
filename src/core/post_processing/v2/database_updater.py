@@ -69,9 +69,15 @@ class DatabaseUpdater:
             if pid in players:
                 players[pid].shots += 1
 
+
         team_goals_map = {}
         for goal in event_results.get("goals", []):
-            tid = goal["team_id"]
+            if goal["event_type"] != "real_goal":
+                continue
+
+            pid = goal["player_id"]
+            player = players.get(pid)
+            tid = player.team_id if player is not None else goal.get("team_id")
             if tid is not None:
                 team_goals_map[tid] = team_goals_map.get(tid, 0) + 1
 

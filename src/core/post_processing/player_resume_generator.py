@@ -53,6 +53,7 @@ class PlayerResumeGenerator:
                 player_id=player.id,
                 track_id=player.track_id,
                 match_id=player.match_id,
+                team_goals=player.team_goals,
                 goals=player.goals,
                 passes=player.shots,
                 team_color=player.team_color or "",

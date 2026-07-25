@@ -91,7 +91,6 @@ class DetectorBase:
 
         return detections_map
 
-    # TODO: At the return of the item the detection mixes with others objects, it needs to be separated
     def _extract_tracks_data(self, detections: Detections) -> Generator[TrackData, None, None]:
         for i in range(len(detections)):
             if detections is None:

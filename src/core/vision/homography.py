@@ -103,7 +103,6 @@ class PitchHomography(HomographyBase):
             except Exception as e:
                 logfire.error(f"[Homography] Error en ML+PnL: {e}")
 
-        # 3. Si ML+PnL falla, usar RANSAC clásico
         logfire.info(f"[Homography] Usando RANSAC clásico para frame {video_item.frame_num}")
         result = self._ransac_calibrate(video_item, camera_scale, camera_tilt, session)
         if result.is_valid:
@@ -111,7 +110,6 @@ class PitchHomography(HomographyBase):
             self.cache_homography(result)
             return result
 
-        # 4. Si RANSAC falla, intentar interpolación
         logfire.warning(f"[Homography] RANSAC falló, intentando interpolación/extrapolación")
         H_interp = self._interpolate_homography(video_item.frame_num)
 
@@ -119,9 +117,9 @@ class PitchHomography(HomographyBase):
             H_interp = H_interp / H_interp[2, 2]
             result = HomographyResult(
                 H_json=json.dumps(H_interp.tolist()),
-                reprojection_error=float("inf"),  # no podemos calcularlo realmente
+                reprojection_error=float("inf"),
                 inlier_count=0,
-                is_valid=True,  # lo marcamos como válido aunque sea una aproximación
+                is_valid=True,
                 frame_num=video_item.frame_num,
                 match_id=video_item.match_id,
                 method_used="interpolated",
@@ -133,7 +131,6 @@ class PitchHomography(HomographyBase):
             logfire.info("[Homography] Interpolación exitosa (usando homografía anterior)")
             return result
 
-        # 5. Si todo falla, devolver una homografía identidad (inválida)
         logfire.error("[Homography] Todas las estrategias fallaron, devolviendo identidad")
         result = HomographyResult(
             H_json=json.dumps(np.eye(3).tolist()),

@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Tuple
 from matplotlib import pyplot as plt, ticker
+from matplotlib.patches import Rectangle, Circle, Arc
 
 import logfire
 import pandas as pd
@@ -237,15 +238,17 @@ class DiagramsGeneratorBase:
                 "Y Position (meters)",
             )
 
-            ax.set_facecolor("#4a7c2f")
-            ax.set_xlim(
-                valid_data["dx_meters"].min() - 2,
-                valid_data["dx_meters"].max() + 2,
-            )
-            ax.set_ylim(
-                valid_data["dy_meters"].min() - 2,
-                valid_data["dy_meters"].max() + 2,
-            )
+            # ax.set_facecolor("#4a7c2f")
+            # ax.set_xlim(
+            #     valid_data["dx_meters"].min() - 2,
+            #     valid_data["dx_meters"].max() + 2,
+            # )
+            # ax.set_ylim(
+            #     valid_data["dy_meters"].min() - 2,
+            #     valid_data["dy_meters"].max() + 2,
+            # )
+
+            self._draw_pitch(ax)
 
             hb = ax.hexbin(
                 valid_data["dx_meters"],
@@ -255,6 +258,7 @@ class DiagramsGeneratorBase:
                 alpha=0.75,
                 mincnt=1,
             )
+
 
             plt.colorbar(hb, ax=ax, label="Detection count")
             ax.invert_yaxis()
@@ -424,3 +428,143 @@ class DiagramsGeneratorBase:
         )
 
         return speed_chart, distance_chart
+
+    def _draw_pitch(self, ax):
+        FIELD_LENGTH = 105.0
+        FIELD_WIDTH = 68.0
+
+        line_color = "#A9B5A6"
+        lw = 1.2
+
+        ax.set_facecolor("#1d3a2f")
+
+        ax.add_patch(
+            Rectangle(
+                (0, 0),
+                FIELD_LENGTH,
+                FIELD_WIDTH,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.plot(
+            [FIELD_LENGTH / 2, FIELD_LENGTH / 2],
+            [0, FIELD_WIDTH],
+            color=line_color,
+            linewidth=lw,
+        )
+
+        ax.add_patch(
+            Circle(
+                (FIELD_LENGTH / 2, FIELD_WIDTH / 2),
+                9.15,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.plot(FIELD_LENGTH / 2, FIELD_WIDTH / 2, ".", color=line_color)
+
+        ax.add_patch(
+            Rectangle(
+                (0, (FIELD_WIDTH - 40.32) / 2),
+                16.5,
+                40.32,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.add_patch(
+            Rectangle(
+                (0, (FIELD_WIDTH - 18.32) / 2),
+                5.5,
+                18.32,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.add_patch(
+            Rectangle(
+                (-2.0, (FIELD_WIDTH - 7.32) / 2),
+                2.0,
+                7.32,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.plot(11, FIELD_WIDTH / 2, ".", color=line_color)
+
+        ax.add_patch(
+            Arc(
+                (11, FIELD_WIDTH / 2),
+                18.3,
+                18.3,
+                theta1=310,
+                theta2=50,
+                color=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.add_patch(
+            Rectangle(
+                (FIELD_LENGTH - 16.5, (FIELD_WIDTH - 40.32) / 2),
+                16.5,
+                40.32,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.add_patch(
+            Rectangle(
+                (FIELD_LENGTH - 5.5, (FIELD_WIDTH - 18.32) / 2),
+                5.5,
+                18.32,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.add_patch(
+            Rectangle(
+                (FIELD_LENGTH, (FIELD_WIDTH - 7.32) / 2),
+                2.0,
+                7.32,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.plot(FIELD_LENGTH - 11, FIELD_WIDTH / 2, ".", color=line_color)
+
+        ax.add_patch(
+            Arc(
+                (FIELD_LENGTH - 11, FIELD_WIDTH / 2),
+                18.3,
+                18.3,
+                theta1=130,
+                theta2=230,
+                color=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.set_xlim(-3, FIELD_LENGTH + 3)
+        ax.set_ylim(FIELD_WIDTH + 3, -3)
+
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])

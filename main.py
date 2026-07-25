@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logfire
 import uvicorn
 
+from src.core.repository.task_repository import TaskRepository
 from src.entities.utils.spark_instance import graceful_shutdown
 from src.core.database import connection_manager
 from src.presentation.api.v1.analyze_router import router as analyze_router
@@ -25,6 +26,8 @@ async def lifespan(app: FastAPI):
     # logfire.info(cv2.getBuildInformation())
     logfire.notice("Application started, ready to receive requests")
     yield
+    session = connection_manager.create_session()
+    TaskRepository.cancel_pending_tasks(session)
     connection_manager.dispose()
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)

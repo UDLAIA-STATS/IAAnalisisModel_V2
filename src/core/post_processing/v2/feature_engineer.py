@@ -11,7 +11,7 @@ from pyspark.sql.functions import (
     lit,
     coalesce,
     avg,
-    expr,
+    row_number,
     abs as sql_abs,
     broadcast,
 )
@@ -26,7 +26,7 @@ class FeatureEngineer:
     def __init__(self, config: PostProcessingConfig):
         self.config = config
         self.spark = spark
-        self.meter_per_pixel = 0.01  # valor por defecto, podría venir de configuración
+        self.meter_per_pixel = 0.0104
 
     def build_possession_features(
         self, ball_df: DataFrame, player_df: DataFrame
@@ -97,43 +97,40 @@ class FeatureEngineer:
         )
         return features
 
+
     def compute_goal_line(
         self, goals_df: Optional[DataFrame], ball_df: Optional[DataFrame]
     ) -> Optional[Dict]:
-        """Estima la recta de gol a partir de los centroides de los goles."""
-        if goals_df is None or goals_df.isEmpty() or ball_df is None:
+        if goals_df is None or goals_df.isEmpty():
             return {"slope": 0.0, "intercept": 68.0, "is_vertical": False}
 
-        # Unir con ball para obtener coordenadas en metros (si es posible)
-        goals_with_ball = goals_df.join(
-            ball_df.select(
-                "frame_number",
-                (col("cx") * self.meter_per_pixel).alias("gx_m"),
-                (col("cy") * self.meter_per_pixel).alias("gy_m"),
-            ),
-            on="frame_number",
-            how="left",
-        )
-        goals_with_ball = goals_with_ball.withColumn(
-            "gx_m", coalesce(col("gx_m"), col("cx") * self.meter_per_pixel)
-        ).withColumn("gy_m", coalesce(col("gy_m"), col("cy") * self.meter_per_pixel))
+        box_rows = goals_df.select(
+            ((col("x1") + col("x2")) / 2 * self.meter_per_pixel).alias("gx_m"),
+            ((col("y1") + col("y2")) / 2 * self.meter_per_pixel).alias("gy_m"),
+        ).dropna().collect()
 
-        points = goals_with_ball.select("gx_m", "gy_m").dropna().collect()
-        if len(points) < 3:
-            return None
+        if not box_rows:
+            return {"slope": 0.0, "intercept": 68.0, "is_vertical": False}
 
-        xs = np.array([p.gx_m for p in points])
-        ys = np.array([p.gy_m for p in points])
-        if np.var(xs) < 0.1:
-            return {
-                "slope": float("inf"),
-                "intercept": float(np.mean(xs)),
-                "is_vertical": True,
-            }
-        A = np.vstack([xs, np.ones(len(xs))]).T
-        m, b = np.linalg.lstsq(A, ys, rcond=None)[0]
-        logfire.info(f"[FeatureEngineer] Goal line: y = {m:.3f}x + {b:.3f}")
-        return {"slope": float(m), "intercept": float(b), "is_vertical": False}
+        xs = np.array([r.gx_m for r in box_rows])
+        ys = np.array([r.gy_m for r in box_rows])
+        var_x = float(np.var(xs)) if len(xs) > 1 else 0.0
+        var_y = float(np.var(ys)) if len(ys) > 1 else 0.0
+
+        if var_x <= var_y:
+            logfire.info(
+                f"[FeatureEngineer] Goal line: vertical at x={np.mean(xs):.3f}m "
+                f"(var_x={var_x:.4f}, var_y={var_y:.4f}, n={len(xs)})"
+            )
+            return {"slope": float("inf"), "intercept": float(np.mean(xs)), "is_vertical": True}
+        else:
+            logfire.info(
+                f"[FeatureEngineer] Goal line: horizontal at y={np.mean(ys):.3f}m "
+                f"(var_x={var_x:.4f}, var_y={var_y:.4f}, n={len(ys)})"
+            )
+            return {"slope": 0.0, "intercept": float(np.mean(ys)), "is_vertical": False}
+
+
 
     def build_goal_linking_features(
         self,
@@ -145,7 +142,6 @@ class FeatureEngineer:
         if any(df is None for df in [goals_df, ball_df, player_df]) or not goal_line:
             return None
 
-        # Generar candidatos: posesiones que ocurren antes del gol
         g = goals_df.alias("g")
         p = player_df.alias("p")
         b = ball_df.alias("b")
@@ -163,7 +159,6 @@ class FeatureEngineer:
             )
         )
 
-        # Distancia del balón al centro del gol
         candidates = candidates.withColumn(
             "ball_to_goal_dist_px",
             sqrt(
@@ -172,7 +167,6 @@ class FeatureEngineer:
             ),
         )
 
-        # Distancia a la línea de gol (usando coordenadas en metros)
         ball_at_goal = ball_df.select(
             col("frame_number").alias("g_ball_frame"),
             col("cx").alias("ball_at_goal_cx"),
@@ -185,7 +179,6 @@ class FeatureEngineer:
             "left",
         )
 
-        # Área de gol reducida
         candidates = candidates.withColumn(
             "inside_goal_area",
             when(
@@ -222,8 +215,6 @@ class FeatureEngineer:
             ).otherwise(False),
         )
 
-        # Distancia a la línea de gol en metros
-        # Convertir a metros
         candidates = candidates.withColumn(
             "ball_at_goal_mx", col("ball_at_goal_cx") * self.meter_per_pixel
         ).withColumn("ball_at_goal_my", col("ball_at_goal_cy") * self.meter_per_pixel)
@@ -241,7 +232,6 @@ class FeatureEngineer:
                 / sqrt(lit(m * m + 1)),
             )
 
-        # Velocidad del balón en el frame del gol
         ball_speed_at_goal = ball_df.select(
             col("frame_number").alias("g_ball_speed_frame"),
             col("speed_kmh").alias("ball_speed"),
@@ -256,20 +246,27 @@ class FeatureEngineer:
             "frame_gap", col("g.frame_number") - col("p.frame_number")
         )
 
-        # Score heurístico para fallback
+        candidates = candidates.withColumn(
+            "has_ball_at_goal_frame", col("ball_at_goal_cx").isNotNull()
+        )
+
+        safe_frame_gap = coalesce(col("frame_gap"), lit(self.config.possession_lookback_frames))
+        safe_ball_to_goal_px = coalesce(col("ball_to_goal_dist_px"), lit(1000.0))
+        safe_dist_line_m = coalesce(col("dist_to_goal_line_m"), lit(10.0))
+        safe_ball_conf = coalesce(col("ball_conf_at_goal"), lit(0.0))
         candidates = candidates.withColumn(
             "score",
             when(
                 col("inside_goal_area"),
-                (col("frame_gap") / self.config.possession_lookback_frames) * 0.10
-                + (col("ball_to_goal_dist_px") / 1000.0) * 0.10
-                + (col("dist_to_goal_line_m") / 10.0) * 0.10
+                (safe_frame_gap / self.config.possession_lookback_frames) * 0.10
+                + (safe_ball_to_goal_px / 1000.0) * 0.10
+                + (safe_dist_line_m / 10.0) * 0.10
                 + (1.0 - col("p.confidence")) * 0.20
-                + (1.0 - col("ball_conf_at_goal")) * 0.20,
+                + (1.0 - safe_ball_conf) * 0.20,
             ).otherwise(
-                (col("frame_gap") / self.config.possession_lookback_frames) * 0.30
-                + (col("ball_to_goal_dist_px") / 1000.0) * 0.25
-                + (col("dist_to_goal_line_m") / 10.0) * 0.25
+                (safe_frame_gap / self.config.possession_lookback_frames) * 0.30
+                + (safe_ball_to_goal_px / 1000.0) * 0.25
+                + (safe_dist_line_m / 10.0) * 0.25
                 + (1.0 - col("p.confidence")) * 0.20
                 + 10.0
             ),
@@ -291,6 +288,7 @@ class FeatureEngineer:
             col("dist_to_goal_line_m"),
             col("ball_speed"),
             col("inside_goal_area"),
+            col("has_ball_at_goal_frame"),
             col("score"),
         )
 
@@ -298,6 +296,7 @@ class FeatureEngineer:
             "frame_gap": self.config.possession_lookback_frames,
             "ball_to_goal_dist_px": 1000.0,
             "dist_to_goal_line_m": 10.0,
+            "has_ball_at_goal_frame": False,
             "player_speed": 0.0,
             "ball_speed": 0.0,
             "inside_goal_area": False
@@ -318,13 +317,27 @@ class FeatureEngineer:
         if any(df is None for df in [goals_df, ball_df, player_df]) or not goal_line:
             return None
 
-        p = player_df.alias("p").filter(col("has_ball"))
-        b = ball_df.alias("b")
+        p = player_df.alias("p").filter(col("has_ball") == True)
+        b = ball_df.alias("b").where(
+            (col("b.speed_kmh") >= self.config.static_speed_threshold)
+            & (col("b.speed_kmh") <= self.config.max_shot_speed_kmh)
+        )
 
         candidates = (
-            p.join(broadcast(b), on="frame_number", how="inner")
-            .where(col("b.speed_kmh") >= self.config.min_shot_speed_kmh)
-            .where(col("b.speed_kmh") <= self.config.max_shot_speed_kmh)
+            p.join(broadcast(b), how="inner")
+            .where(col("p.frame_number") <= col("b.frame_number"))
+            .where(
+                (col("b.frame_number") - col("p.frame_number"))
+                <= self.config.possession_lookback_frames
+            )
+        )
+        w_kick = Window.partitionBy(col("b.frame_number")).orderBy(
+            col("p.frame_number").desc()
+        )
+        candidates = (
+            candidates.withColumn("rn", row_number().over(w_kick))
+            .filter(col("rn") == 1)
+            .drop("rn")
         )
 
         # Distancia a la línea de gol (en metros)
@@ -414,7 +427,7 @@ class FeatureEngineer:
             col("p.track_id"),
             col("p.team_id"),
             col("p.shirt_number"),
-            col("frame_number"),
+            col("b.frame_number").alias("frame_number"),
             col("p.timestamp"),
             col("b.timestamp").alias("ball_timestamp"),
             col("b.speed_kmh").alias("ball_speed"),
@@ -423,7 +436,13 @@ class FeatureEngineer:
             col("dist_to_goal_line"),
             col("angle_to_goal"),
             col("inside_shot_area"),
-        ).na.fill(99999.0)
+        )
+
+        features = features.fillna({
+            "dist_to_goal_line": 0.0,
+            "angle_to_goal": 0.0,
+            "p.shirt_number": 0
+        })
 
         logfire.info(f"[FeatureEngineer] Built shot candidates: {features.count()}")
         return features

@@ -17,6 +17,9 @@ from src.entities.reporter.match_spatial_analyzer_base import MatchSpatialAnalyz
 from src.config.routes import DIAGRAMS_DIR, OUTPUT_DIAGRAMS
 
 from .reporter_utils import group_states_by_id
+import matplotlib
+
+matplotlib.use('Agg')
 
 class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
     """
@@ -641,6 +644,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 )
                 continue
 
+        plt.close("all")
         logfire.info(
             f"[MatchSpatialAnalyzer] Generated {len(saved_paths)} heatmaps"
         )

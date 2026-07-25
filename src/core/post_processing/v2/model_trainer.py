@@ -187,27 +187,23 @@ class ModelTrainer:
     ) -> Optional[PipelineModel]:
         if goals_df.isEmpty():
             return None
-        # Positivos: frames dentro de la ventana de gol
+        threshold_m = self.config.near_goal_cm_threshold / 100.0
         goal_timestamps = [
             row.timestamp for row in goals_df.select("timestamp").collect()
         ]
-        # Negativos: frames lejanos o con ángulo grande
-        pos = features_df.filter(
-            (col("ball_timestamp").isin(goal_timestamps))
-            | (
-                col("frame_number").isin(
-                    [
-                        row.frame_number
-                        for row in goals_df.select("frame_number").collect()
-                    ]
-                )
-            )
-        ).withColumn("label", lit(1))
+        goal_frame_numbers = [
+            row.frame_number for row in goals_df.select("frame_number").collect()
+        ]
         neg = features_df.filter(
-            (col("dist_to_goal_line") > 2 * self.config.near_goal_cm_threshold / 100.0)
-            | (col("angle_to_goal") > 60)
+            (col("ball_timestamp").isin(goal_timestamps))
+            | (col("frame_number").isin(goal_frame_numbers))
+            | (col("dist_to_goal_line") <= threshold_m)
+            | (col("inside_shot_area") == True)
         ).withColumn("label", lit(0))
-        # Balancear
+        pos = features_df.filter(
+            (col("dist_to_goal_line") > 2 * threshold_m)
+            & (col("inside_shot_area") == False)
+        ).withColumn("label", lit(1))
         pos_count = pos.count()
         if pos_count < 5:
             logfire.warning(

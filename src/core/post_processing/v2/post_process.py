@@ -31,7 +31,7 @@ class PostProcessor:
     def run(self):
         logfire.info(f"[Pipeline] Starting for match {self.match_id}")
         try:
-            raw_ball_df, player_df, goals_df, players_df = self.loader.load_all(
+            raw_ball_df, player_df, goals_df, _ = self.loader.load_all(
                 self.match_id
             )
 
@@ -65,7 +65,6 @@ class PostProcessor:
                     goals_df, ball_df, player_df, goal_line
                 )
 
-            # 4. Entrenamiento de modelos (si use_ml)
             possession_model = None
             goal_model = None
             shot_model = None
@@ -113,7 +112,6 @@ class PostProcessor:
                         ball_df, model_cx_path, model_cy_path, self.config.force_retrain
                     )
 
-            # 5. Detección de eventos
             # Posesión
             possession_pred = self.detector.predict_possession(
                 possession_features, possession_model
@@ -134,23 +132,19 @@ class PostProcessor:
                     traj_model_cx, traj_model_cy, total_frames, self.match_id
                 )
                 if traj_df is not None:
-                    # winners_df es ball_df después de limpieza (ya tiene uno por frame)
                     interpolated_ball = self.detector.interpolate_ball_states(
                         ball_df, traj_df, total_frames
                     )
 
-            # Asignación de goles
             goal_results: Dict[str, List[Dict]] = {"goals": [], "shots": []}
-            goal_frames = [row.frame_number for row in goals_df.select("frame_number").collect()]
+            goal_frames = self.detector.consolidate_goal_frames(goals_df)
 
-            # Disparos
-            shot_list = []
             shot_pred = None
             if shot_features is not None and not shot_features.isEmpty():
                 shot_pred = self.detector.predict_shots(shot_features, shot_model, goal_frames)
-                shot_list = self.detector._detect_shots_from_features(shot_features, shot_model, goal_frames)
                 if self.config.cache_dataframes and shot_pred is not None:
                     shot_pred.cache()
+
             
             if goal_candidates is not None and not goal_candidates.isEmpty():
                 goal_results = self.detector.predict_goal_scorer(
@@ -160,10 +154,7 @@ class PostProcessor:
                     shot_model=shot_model,
                     goal_frames=goal_frames,
                 )
-            
-            goal_results["shots"] = shot_list
 
-            # Tiempo de posesión y conteo de disparos
             shot_counts = (
                 self.detector.compute_shot_counts(shot_pred)
                 if shot_pred is not None
@@ -171,7 +162,6 @@ class PostProcessor:
             )
 
 
-            # 6. Actualización de BD
             self.updater.update_player_states(possession_pred)
             if possession_times is not None or shot_counts is not None or goal_results:
                 self.updater.update_player_stats(

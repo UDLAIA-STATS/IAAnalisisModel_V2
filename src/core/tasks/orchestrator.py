@@ -217,7 +217,19 @@ class Orchestrator:
                 task.general_state = StatesModel.COMPLETED
                 task.completed_at = datetime.now()
                 TaskRepository.upsert_task(task, session)
+            except KeyboardInterrupt:
+                logfire.info("Aborted by user")
+                resume_generator.send_resumes(
+                    request.match_id, request.color, False, session
+                )
+                if current_step:
+                    current_step.state = StatesModel.CANCELLED
+                    current_step.message = f"El flujo fue cancelado por el usuario o el sistema, consultar el log de la tarea {task.id}"
+                    TaskRepository.upsert_task_step(current_step, session)
 
+                task.general_state = StatesModel.CANCELLED
+                task.completed_at = datetime.now()
+                TaskRepository.upsert_task(task, session)
             except Exception as e:
                 error_msg = traceback.format_exc()
                 resume_generator.send_resumes(
@@ -230,7 +242,8 @@ class Orchestrator:
 
                 if current_step:
                     current_step.state = StatesModel.FAILED
-                    current_step.message = f"Error: {error_msg[:400]}"
+                    current_step.message = f"Error al realizar el análisis, consultar el log de la tarea {task.id}"
+                    current_step.error_details = error_msg
                     TaskRepository.upsert_task_step(current_step, session)
 
                 task.general_state = StatesModel.FAILED

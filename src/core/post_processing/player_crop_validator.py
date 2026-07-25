@@ -31,8 +31,8 @@ class PlayerCropValidator:
     """
 
     YOLO_CONFIDENCE_THRESHOLD: float = 0.15
-    COSINE_DISTANCE_THRESHOLD: float = 0.1
-    MIN_PLAYERS_TO_CLUSTER: int = 8
+    COSINE_DISTANCE_THRESHOLD: float = 0.20
+    MIN_PLAYERS_TO_CLUSTER: int = 24
 
     YOLO_MODEL_PATH: str = PLAYER_MODEL_PATH.as_posix()
 
@@ -40,7 +40,7 @@ class PlayerCropValidator:
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         logfire.info(f"[PlayerCropValidator] Using device: {self.device}")
 
-        self.yolo = YOLO(self.YOLO_MODEL_PATH)
+        self.yolo = YOLO("yolo26x.pt")
         self.reid_model = self._load_reid_model(reid_model_name)
 
         self.pose_landmarker = None
@@ -154,6 +154,10 @@ class PlayerCropValidator:
                 f"[PlayerCropValidator] Processing player {player.id} (track {player.track_id})"
             )
 
+            # if player.shirt_number is None:
+            #     to_delete_ids.append(player.id)
+            #     continue
+
             if not player.crop_path:
                 logfire.warning(
                     f"[PlayerCropValidator] Player {player.id} has no crop_path, marking for deletion"
@@ -266,11 +270,12 @@ class PlayerCropValidator:
 
         results = self.yolo.predict(
             enhanced_image,
-            augment=True,
+            # augment=True,
             conf=0.15,
             verbose=False,
             device=self.device,
             agnostic_nms=True,
+            end2end=True
         )
 
         max_conf = 0.0
@@ -390,7 +395,6 @@ class PlayerCropValidator:
                 f"[PlayerCropValidator] Merged player {secondary_id} into {primary_id}"
             )
 
-        # 2. Eliminar jugadores inválidos (los que no tienen persona y no son primary)
         final_delete = [
             pid for pid in to_delete if pid not in primary_ids and pid in player_dict
         ]
@@ -411,6 +415,20 @@ class PlayerCropValidator:
         """
         Transfiere todas las relaciones (PlayerState, PlayerNumbers, DepthHistory) de source a target.
         """
+
+        if source.shirt_number != target.shirt_number and source.shirt_number is not None:
+            target.shirt_number = source.shirt_number
+            session.add(target)
+            logfire.info(f"[PlayerCropValidator] Updated player {target.id}")
+        
+        if source.goals > 0 or source.shots > 0 or source.team_goals > 0:
+            target.goals += source.goals
+            target.shots += source.shots
+            target.team_goals += source.team_goals
+
+            session.add(target)
+            logfire.info(f"[PlayerCropValidator] Updated player {target.id}")
+
         # PlayerState
         stmt = select(PlayerState).where(PlayerState.player_id == source.id)
         states = session.exec(stmt).all()
@@ -432,10 +450,10 @@ class PlayerCropValidator:
             d.player_id = target.id
             session.add(d)
 
-        # Nota: si hay otras relaciones, agregarlas aquí
         logfire.info(
             f"[PlayerCropValidator] Transferred relationships from player {source.id} to {target.id}"
         )
+        session.flush()
 
     def _delete_players(self, player_ids: List[int], session: Session) -> None:
         """Elimina jugadores de la base de datos (cascada automática si está configurada)."""

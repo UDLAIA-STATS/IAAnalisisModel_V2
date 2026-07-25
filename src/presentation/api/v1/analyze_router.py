@@ -1,6 +1,8 @@
 import asyncio
+from datetime import date
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 import logfire
 from sqlmodel import Session
 
@@ -8,7 +10,7 @@ from src.core.repository.task_repository import TaskRepository
 from src.core.tasks.orchestrator import Orchestrator
 from src.core.database import connection_manager
 from src.entities.models.requests.analyze_request import AnalyzeRequest
-from src.entities.models.requests.queue_model import Task, TaskRead
+from src.entities.models.requests.queue_model import Task, TaskRead, OrderDirection
 from src.entities.types.states import StatesModel
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
@@ -22,7 +24,7 @@ async def execute_analysis(body: AnalyzeRequest, task_id: str, session: Session)
             body,
             task_id
         )
-
+    
     except Exception as e:
         logfire.exception(
             f"[BackgroundTask] Error processing task {task_id}: {e}"
@@ -57,9 +59,22 @@ def get_task(task_id: str, session: Session = Depends(connection_manager.create_
     return TaskRepository.get_task(task_id, session)
 
 @router.get("/status/tasks", status_code=200, response_model=list[TaskRead])
-def get_tasks(session: Session = Depends(connection_manager.create_session)):
-    return TaskRepository.get_tasks(session)
-    
+def get_tasks(
+    session: Session = Depends(connection_manager.create_session),
+    analysis_date: Optional[date] = Query(
+        default=None,
+        description="Fecha de análisis para filtrar las tareas (YYYY-MM-DD)",
+    ),
+    order: OrderDirection = Query(
+        default=OrderDirection.DESC,
+        description="Orden de los resultados: 'asc' o 'desc'",
+    ),
+):
+    return TaskRepository.get_tasks(
+        session=session,
+        analysis_date=analysis_date,
+        order=order,
+    )
 
 @router.get("/", status_code=200)
 def health():

@@ -21,5 +21,5 @@ class Singleton(type):
 
 class AbstractSingleton(Singleton, ABCMeta):
     """Metaclass combining ABC and Singleton safely."""
-
     pass
+
