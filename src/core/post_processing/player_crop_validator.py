@@ -32,7 +32,7 @@ class PlayerCropValidator:
 
     YOLO_CONFIDENCE_THRESHOLD: float = 0.15
     COSINE_DISTANCE_THRESHOLD: float = 0.20
-    MIN_PLAYERS_TO_CLUSTER: int = 24
+    MIN_PLAYERS_TO_CLUSTER: int = 4
 
     YOLO_MODEL_PATH: str = PLAYER_MODEL_PATH.as_posix()
 

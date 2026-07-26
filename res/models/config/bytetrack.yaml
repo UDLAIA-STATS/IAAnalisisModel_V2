@@ -25,11 +25,11 @@ penalty_q: 0.35
 
 reduce_step: 0.3
 
-tai_thr: 0.45
+tai_thr: 0.4
 min_track_len: 1
 lost_match_thr: 0.4
 
 with_reid: True
 gmc_method: sparseOptFlow
-model: yolo26m-cls.pt
+model: yolo26s-cls.pt
 

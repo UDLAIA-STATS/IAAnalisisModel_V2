@@ -44,6 +44,7 @@ class DetectionsReporter(DetectionsReporterBase):
             traj_chart,
         ) = self.spatial_analyzer.generate_spatial_diagrams(report_path, match_id)
         player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(report_path, match_id, session) 
+        player_trajectories = self.spatial_analyzer.generate_per_player_movement_trajectories(match_id, session)
         
 
 
@@ -71,13 +72,18 @@ class DetectionsReporter(DetectionsReporterBase):
             key = self.upload_report(heatmap_path, match_id, FilePurposeTypes.HEATMAP)
             PlayerRepository.upload_heatmap(player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session)
 
+        for player_id, trajectory_path in player_trajectories:
+            key = self.upload_report(trajectory_path, match_id, FilePurposeTypes.HEATMAP)
+            PlayerRepository.upload_trajectory(player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session)
 
-        velocity_kde_by_team_path = settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["velocity_kde_by_team"]
+        time_kde_by_team_path = settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["velocity_kde_by_team"]
         voronoi_territories_path = settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["voronoi_territories"]
 
         PlayerRepository.upload_match_files(
             settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["heatmap_chart"],
             settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["movement_trajectories"],
+            time_kde_by_team_path,
+            voronoi_territories_path,
             match_id,
             session,
         )

@@ -7,12 +7,18 @@ from src.entities.models.soccer.player_model import PlayerModel
 
 class PlayerRepository:
     @staticmethod
-    def get_player_by_track_id(track_id: int, match_id: int, session: Session) -> PlayerModel | None:
-        query = select(PlayerModel).where(PlayerModel.track_id == track_id and PlayerModel.match_id == match_id)
+    def get_player_by_track_id(
+        track_id: int, match_id: int, session: Session
+    ) -> PlayerModel | None:
+        query = select(PlayerModel).where(
+            PlayerModel.track_id == track_id and PlayerModel.match_id == match_id
+        )
         return session.exec(query).first()
 
     @staticmethod
-    def get_players_by_match_id(match_id: int, session: Session) -> Sequence[PlayerModel]:
+    def get_players_by_match_id(
+        match_id: int, session: Session
+    ) -> Sequence[PlayerModel]:
         query = select(PlayerModel).where(PlayerModel.match_id == match_id)
         return session.exec(query).all()
 
@@ -23,8 +29,10 @@ class PlayerRepository:
     @staticmethod
     def upsert_player(player: PlayerModel, session: Session) -> int:
         existing = session.exec(
-            select(PlayerModel)
-            .where(PlayerModel.match_id == player.match_id, PlayerModel.track_id == player.track_id)
+            select(PlayerModel).where(
+                PlayerModel.match_id == player.match_id,
+                PlayerModel.track_id == player.track_id,
+            )
         ).first()
 
         if existing:
@@ -36,7 +44,7 @@ class PlayerRepository:
         session.flush()
         player_id = player.id
         return player_id
-    
+
     @staticmethod
     def delete_player(player_id: int, session: Session) -> None:
         player = session.get(PlayerModel, player_id)
@@ -50,7 +58,6 @@ class PlayerRepository:
         session.delete(player)
         session.commit()
 
-    
     @staticmethod
     def upload_heatmap(player_id: int, heatmap_url: str, session: Session) -> None:
         player = session.get(PlayerModel, player_id)
@@ -63,7 +70,25 @@ class PlayerRepository:
         session.flush()
 
     @staticmethod
-    def upload_match_files(team_heatmap_path: str, movement_trajectories_path: str, match_id: int, session: Session):
+    def upload_trajectory(player_id: int, trajectory_path: str, session: Session) -> None:
+        player = session.get(PlayerModel, player_id)
+        if not player:
+            return
+
+        player.player_movement_trajectories_path = trajectory_path
+
+        session.add(player)
+        session.flush()
+
+    @staticmethod
+    def upload_match_files(
+        team_heatmap_path: str,
+        movement_trajectories_path: str,
+        time_color_kde_path: str,
+        voronoi_territories: str,
+        match_id: int,
+        session: Session,
+    ):
         players = session.exec(
             select(PlayerModel).where(PlayerModel.match_id == match_id)
         ).all()
@@ -76,6 +101,8 @@ class PlayerRepository:
 
             player_db.team_heatmap_path = team_heatmap_path
             player_db.movement_trajectories_path = movement_trajectories_path
+            player_db.team_color_time_kde_path = time_color_kde_path
+            player_db.voronoi_territories_path = voronoi_territories
 
             session.add(player)
             session.flush()

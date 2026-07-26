@@ -35,7 +35,7 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
         actual_pixel_conversion = pixel_conversion_handler.calculate_value(video_item.frame)
         actual_tilt = tilt_detector.get_current_tilt()
         
-        if self.last_kp_calculated == 0 or self.last_kp_calculated + self.frame_step * 3 <= video_item.frame_num:
+        if self.last_kp_calculated == 0 or self.last_kp_calculated + self.frame_step * 2 <= video_item.frame_num:
             result = pitch_homography.calibrate(
             video_item,
             actual_scale,

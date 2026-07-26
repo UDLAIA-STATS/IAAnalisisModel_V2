@@ -180,12 +180,31 @@ _predetermined: dict[str, tuple[float, float]] = {
     "tr_corner": (1138.0, 32.0),
     "bl_corner": (68.0, 698.0),
     "br_corner": (1212.0, 694.0),
+
     "mid_top": (640.0, 20.0),
     "mid_bottom": (640.0, 710.0),
+
+    "centre_spot": (640.0, 365.0),
+
     "lpen_tl": (142.0, 182.0),
     "lpen_bl": (142.0, 518.0),
+    "lpen_tr": (280.0, 182.0),
+    "lpen_br": (280.0, 518.0),
+
+    "rpen_tl": (1000.0, 178.0),
+    "rpen_bl": (1000.0, 522.0),
     "rpen_tr": (1138.0, 178.0),
     "rpen_br": (1138.0, 522.0),
+
+    "lsix_tl": (142.0, 275.0),
+    "lsix_bl": (142.0, 425.0),
+    "lsix_tr": (185.0, 275.0),
+    "lsix_br": (185.0, 425.0),
+
+    "rsix_tl": (1095.0, 275.0),
+    "rsix_bl": (1095.0, 425.0),
+    "rsix_tr": (1138.0, 275.0),
+    "rsix_br": (1138.0, 425.0),
 }
 
 pitch_homography = PitchHomography(_predetermined)

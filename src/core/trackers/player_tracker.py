@@ -51,14 +51,14 @@ class PlayerTracker(DetectorBase):
             tracker=self.tracker_config_file,
             persist=True,
             conf=0.1,
-            iou=0.6,
+            iou=0.7,
             verbose=False,
             device=self.device,
-            # stream=True,
             # augment=True,
             agnostic_nms=True,
             end2end=True
         )
+
 
         # logfire.info(f"[PlayerTracker] Number of tracks: {len(list(tracks))}")
         return tracks

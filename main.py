@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     connection_manager.create_database()
     ensure_directories()
     validate_model()
-    logfire.configure()
+    logfire.configure(scrubbing=False, service_name="pnl_analyzer", service_version="2.0.0")
     logfire.instrument_fastapi(app)
     # logfire.info(cv2.getBuildInformation())
     logfire.notice("Application started, ready to receive requests")

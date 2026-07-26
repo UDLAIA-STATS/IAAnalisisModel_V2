@@ -239,11 +239,11 @@ class Orchestrator:
                 logfire.fatal(
                     f"Error durante '{current_step.name if current_step else 'run_tasks'}': {error_msg}"
                 )
-
+                
                 if current_step:
                     current_step.state = StatesModel.FAILED
                     current_step.message = f"Error al realizar el análisis, consultar el log de la tarea {task.id}"
-                    current_step.error_details = error_msg
+                    current_step.error_details = error_msg[:400]
                     TaskRepository.upsert_task_step(current_step, session)
 
                 task.general_state = StatesModel.FAILED

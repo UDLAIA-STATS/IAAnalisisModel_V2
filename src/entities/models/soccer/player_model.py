@@ -22,6 +22,9 @@ class PlayerModel(NumericIdModel, AuditTable, table=True):
     heatmap_path: str = Field(nullable=True, default=None)
     team_heatmap_path: str = Field(nullable=True, default=None)
     movement_trajectories_path: str = Field(nullable=True, default=None)
+    player_movement_trajectories_path: str = Field(nullable=True, default=None)
+    team_color_time_kde_path: str = Field(nullable=True, default=None)
+    voronoi_territories_path: str = Field(nullable=True, default=None)
 
     states: list["PlayerState"] = Relationship(back_populates="player", cascade_delete=True)
     numbers: list["PlayerNumbers"] = Relationship(back_populates="player", cascade_delete=True)

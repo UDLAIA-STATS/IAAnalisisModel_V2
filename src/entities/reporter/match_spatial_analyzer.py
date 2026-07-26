@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import List, Tuple
 
 import logfire
+from matplotlib.patheffects import Normal, Stroke
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -12,14 +13,15 @@ from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
 from sqlmodel import Session, col, select
 
-from src.entities.models.soccer.player_model import PlayerModel, PlayerState
+from src.core.repository.player_repository import PlayerRepository
 from src.entities.reporter.match_spatial_analyzer_base import MatchSpatialAnalyzerBase
 from src.config.routes import DIAGRAMS_DIR, OUTPUT_DIAGRAMS
 
 from .reporter_utils import group_states_by_id
 import matplotlib
 
-matplotlib.use('Agg')
+matplotlib.use("Agg")
+
 
 class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
     """
@@ -89,7 +91,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             players_df, parent_dir, stem
         )
         voronoi_path = self._generate_voronoi_territories(players_df, parent_dir, stem)
-        kde_path = self._generate_velocity_kde_by_team(players_df, parent_dir, stem)
+        kde_path = self._generate_time_kde_by_team(players_df, parent_dir, stem)
         dist_matrix_path = self._generate_team_distance_matrix(
             players_df, parent_dir, stem
         )
@@ -292,50 +294,72 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             logfire.error(f"[MatchSpatialAnalyzer] Error in Voronoi: {e}")
             return None
 
-    def _generate_velocity_kde_by_team(
+    def _generate_time_kde_by_team(
         self, players_df: pd.DataFrame, parent_dir: Path, stem: str
     ) -> Path | None:
-        """Filled KDE plot of velocity distribution by team color."""
+        """Shows team recognition percentage over time."""
         try:
-            unique_colors = players_df["parsed_team_color"].dropna().unique()
-            if len(unique_colors) == 0:
-                logfire.warning(
-                    "[MatchSpatialAnalyzer] No team colors for velocity KDE"
-                )
+            df = players_df.copy()
+
+            df = df.dropna(subset=["timestamp", "parsed_team_color"])
+
+            if df.empty:
+                logfire.warning("[MatchSpatialAnalyzer] No timestamp/team color data.")
                 return None
 
-            color_palette = {c: c for c in unique_colors}
-
-            fig, ax = plt.subplots(figsize=(8, 6))
-
-            sns.kdeplot(
-                data=players_df,
-                x="speed",
-                hue="parsed_team_color",
-                multiple="fill",
-                common_norm=False,
-                ax=ax,
-                palette=color_palette,
-                alpha=0.7,
-                cut=0,
+            counts = (
+                df.groupby(["timestamp", "parsed_team_color"])
+                .size()
+                .unstack(fill_value=0)
+                .sort_index()
             )
 
-            ax.set_xlabel("Velocity (km/h)", fontsize=12)
-            ax.set_ylabel("Density", fontsize=12)
-            ax.set_title("Velocity Distribution by Team", fontsize=14)
+            percentages = counts.div(counts.sum(axis=1), axis=0) * 100
 
-            sns.move_legend(ax, "upper left", bbox_to_anchor=(1, 1))
+            timestamps = percentages.index.values
+            n_points = len(timestamps)
+
+            fig, ax = plt.subplots(figsize=(12, 5))
+
+            ax.stackplot(
+                timestamps,
+                percentages.T.values,
+                labels=percentages.columns,
+                colors=percentages.columns,
+                alpha=0.85,
+            )
+
+            ax.set_xlabel("Time (s)")
+            ax.set_ylabel("Recognition (%)")
+            ax.set_ylim(0, 100)
+            ax.set_title("Team Recognition Over Time")
+            max_ticks = 40
+
+            if n_points > max_ticks:
+                step = max(1, n_points // max_ticks)
+                ax.set_xticks(timestamps[::step])
+
+            ax.tick_params(axis="x", labelrotation=45)
+            ax.legend(
+                title="Team",
+                bbox_to_anchor=(1.02, 1),
+                loc="upper left",
+            )
 
             plt.tight_layout()
 
-            out_path = parent_dir / f"velocity_kde_by_team_{stem}.png"
+            out_path = parent_dir / f"team_recognition_over_time_{stem}.png"
             plt.savefig(out_path, dpi=150, bbox_inches="tight")
             plt.close(fig)
+
             logfire.info(f"[MatchSpatialAnalyzer] Saved {out_path.as_posix()}")
+
             return out_path
 
         except Exception as e:
-            logfire.error(f"[MatchSpatialAnalyzer] Error in velocity KDE: {e}")
+            logfire.error(
+                f"[MatchSpatialAnalyzer] Error generating recognition plot: {e}"
+            )
             return None
 
     def _generate_team_distance_matrix(
@@ -448,6 +472,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
 
             fig, ax = plt.subplots(figsize=(14, 10))
             ax.set_facecolor(self._FIELD_COLOR)
+            self._draw_goal_lines(ax, x_shift, x_shift + 105.0, y_shift, y_shift + 68.0)
 
             track_ids = sorted(valid_players["track_id"].unique())
             cmap = plt.get_cmap("tab20")
@@ -519,6 +544,174 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             logfire.error(f"[MatchSpatialAnalyzer] Error in trajectories: {e}")
             return None
 
+    def generate_per_player_movement_trajectories(
+        self,
+        match_id: int,
+        session: Session,
+    ) -> List[Tuple[int, Path]]:
+        """
+        Generates one movement trajectory per player using DB states.
+        Returns:
+            List[(player_id, trajectory_path)]
+        """
+
+        output_dir = self.player_heatmaps_dir
+        players = PlayerRepository.get_players_by_match_id(match_id, session)
+
+        if not players:
+            logfire.warning(
+                f"[MatchSpatialAnalyzer] No players found for match {match_id}"
+            )
+            return []
+
+
+        saved_paths: List[Tuple[int, Path]] = []
+
+        for player in players:
+
+            states = sorted(
+                player.states,
+                key=lambda s: s.frame_number,
+            )
+
+            if len(states) < 2:
+                continue
+
+            x: list[float] = []
+            y: list[float] = []
+
+            for state in states:
+                if state.dx_meters is not None and state.dy_meters is not None:
+                    x.append(state.dx_meters)
+                    y.append(state.dy_meters)
+                else:
+                    continue
+
+            if len(x) < 2:
+                continue
+
+            try:
+                fig, ax = plt.subplots(
+                    figsize=(14, 9),
+                    dpi=150,
+                )
+
+                self._draw_pitch(
+                    ax
+                )
+
+                x_min, x_max = ax.get_xlim()
+                y_min, y_max = ax.get_ylim()
+
+                self._draw_goal_lines(
+                    ax,
+                    x_min,
+                    x_max,
+                    y_min,
+                    y_max,
+                )
+
+                color = "#1f77b4"
+
+                if player.team_color:
+                    parsed = self._parse_rgb_color(player.team_color)
+                    if parsed is not None:
+                        color = parsed
+
+                ax.plot(
+                    x,
+                    y,
+                    color=color,
+                    linewidth=3.2,
+                    alpha=1.0,
+                    solid_capstyle="round",
+                    zorder=3,
+                    path_effects=[
+                        Stroke(linewidth=5.5, foreground="white"),
+                        Normal(),
+                    ],
+                )
+                ax.patch.set_facecolor(self._FIELD_COLOR)
+
+                ax.scatter(
+                    x[0],
+                    y[0],
+                    c="lime",
+                    s=180,
+                    marker="o",
+                    edgecolors="black",
+                    linewidths=2,
+                    zorder=6,
+                )
+
+                ax.scatter(
+                    x[-1],
+                    y[-1],
+                    c="red",
+                    s=220,
+                    marker="X",
+                    edgecolors="black",
+                    linewidths=2,
+                    zorder=6,
+                )
+
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                ax.invert_yaxis()
+
+                title = f"Trayectoria del jugador {player.shirt_number if player.shirt_number is not None else player.id}"
+
+                if player.shirt_number is not None:
+                    title += f" - #{player.shirt_number}"
+
+                ax.set_title(
+                    title,
+                    fontsize=18,
+                    pad=18,
+                    color="black",
+                    fontweight="bold",
+                )
+
+
+                plt.tight_layout()
+
+                out_path = output_dir / f"{player.id}_movement_trajectory.png"
+
+                plt.savefig(
+                    out_path,
+                    dpi=150,
+                    bbox_inches="tight",
+                )
+
+                plt.close(fig)
+
+                saved_paths.append(
+                    (
+                        player.id,
+                        out_path,
+                    )
+                )
+
+                logfire.info(
+                    f"[MatchSpatialAnalyzer] Saved trajectory: {out_path.as_posix()}"
+                )
+
+            except Exception as exc:
+                logfire.error(
+                    f"[MatchSpatialAnalyzer] Error generating trajectory for player {player.id}: {exc}"
+                )
+                continue
+
+        plt.close("all")
+
+        logfire.info(
+            f"[MatchSpatialAnalyzer] Generated {len(saved_paths)} player trajectories."
+        )
+
+        return saved_paths
+
     def generate_per_player_heatmaps(
         self, report_path: Path, match_id: int, session: Session
     ) -> List[Tuple[int, Path]]:
@@ -552,6 +745,8 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
         saved_paths: List[Tuple[int, Path]] = []
 
         for player_id, states in state_groups.items():
+            shirt_number = states[0].player.shirt_number
+            label = shirt_number if shirt_number is not None else player_id
 
             if not states or len(states) < 3:
                 logfire.warning(
@@ -563,13 +758,12 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             dy = []
 
             for s in states:
-                if s.dx_meters is None or s.dy_meters is None:
-                    dx.append(s.dx)
-                    dy.append(s.dy)
-                else:
-                    dx.append(s.dx_meters)
-                    dy.append(s.dy_meters)
-
+                # if s.dx_meters is None or s.dy_meters is None:
+                dx.append(s.dx)
+                dy.append(s.dy)
+                # else:
+                #     dx.append(s.dx_meters)
+                #     dy.append(s.dy_meters)
 
             if len(dx) < 3:
                 logfire.warning(
@@ -577,24 +771,12 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 )
                 continue
 
-            csv_row = players_df[players_df["id"] == player_id]
-
-            if not csv_row.empty:
-                team_color = csv_row["parsed_team_color"].dropna().iloc[0] \
-                    if not csv_row["parsed_team_color"].dropna().empty else "#4a7c2f"
-
-                track_id = csv_row["track_id"].iloc[0] if "track_id" in csv_row.columns else "N/A"
-            else:
-                team_color = "#4a7c2f"
-                track_id = "N/A"
-
-
             try:
                 fig, ax = plt.subplots(figsize=(10, 10))
 
-                fig.patch.set_facecolor("#4a7c2f")
-                ax.set_facecolor(team_color)
-                ax.patch.set_alpha(0.15)
+                ax.set_facecolor(self._FIELD_COLOR)
+                # fig.patch.set_facecolor("#4a7c2f")
+                # ax.patch.set_alpha(0.15)
 
                 dx_arr = pd.Series(dx)
                 dy_arr = pd.Series(dy)
@@ -608,23 +790,36 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 ax.set_xlim(x_min - x_pad, x_max + x_pad)
                 ax.set_ylim(y_min - y_pad, y_max + y_pad)
 
+                self._draw_goal_lines(
+                    ax,
+                    x_min - x_pad,
+                    x_max + x_pad,
+                    y_min - y_pad,
+                    y_max + y_pad,
+                )
+
                 hb = ax.hexbin(
                     dx_arr,
                     dy_arr,
-                    gridsize=20,
+                    gridsize=30,
                     cmap="YlOrRd",
-                    alpha=0.85,
+                    alpha=0.95,
                     mincnt=1,
                 )
 
                 cbar = plt.colorbar(hb, ax=ax)
-                cbar.set_label("Density")
+                cbar.set_label("Densidad")
 
                 ax.set_xticks([])
                 ax.set_yticks([])
                 ax.set_xlabel("")
                 ax.set_ylabel("")
                 ax.invert_yaxis()
+
+                ax.set_title(
+                    f"Mapa de calor: {label}\n",
+                    fontsize=12,
+                )
 
                 plt.tight_layout()
 
@@ -644,7 +839,6 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 )
                 continue
 
-        plt.close("all")
         logfire.info(
             f"[MatchSpatialAnalyzer] Generated {len(saved_paths)} heatmaps"
         )

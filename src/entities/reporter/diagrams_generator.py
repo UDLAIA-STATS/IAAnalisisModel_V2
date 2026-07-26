@@ -1,12 +1,16 @@
 from pathlib import Path
 from typing import Tuple
 from matplotlib import pyplot as plt, ticker
-from matplotlib.patches import Rectangle, Circle, Arc
+from matplotlib.patches import Ellipse, Rectangle, Circle, Arc
 
 import logfire
 import pandas as pd
+from sqlmodel import Session, select
 
+from src.config.constants import PITCH_WIDTH, PITCH_LENGTH
+from src.entities.models.soccer.player_model import PlayerModel, PlayerState
 from src.config.routes import DIAGRAMS_DIR
+
 
 class DiagramsGeneratorBase:
     _TRACK_COLORS = [
@@ -55,9 +59,7 @@ class DiagramsGeneratorBase:
                 players_df, parent_dir, stem
             )
 
-            heatmap_chart = self._generate_heatmap_meters(
-                players_df, parent_dir, stem
-            )
+            heatmap_chart = self._generate_heatmap_meters(players_df, parent_dir, stem)
 
         return (
             class_chart.as_posix() if class_chart else "",
@@ -65,7 +67,6 @@ class DiagramsGeneratorBase:
             dynamics_chart.as_posix() if dynamics_chart else "",
             heatmap_chart.as_posix() if heatmap_chart else "",
         )
-
 
     def _generate_class_counts_chart(
         self, df: pd.DataFrame, parent_dir: Path, stem: str
@@ -75,9 +76,7 @@ class DiagramsGeneratorBase:
         Includes all object types present in the report.
         """
         try:
-            class_counts = (
-                df.groupby("object_type").size().sort_values(ascending=False)
-            )
+            class_counts = df.groupby("object_type").size().sort_values(ascending=False)
 
             fig, ax = self._generate_plot(
                 (8, 5),
@@ -164,9 +163,7 @@ class DiagramsGeneratorBase:
         """
         try:
             player_dynamics = (
-                players_df.groupby("track_id")[
-                    ["speed", "distance", "acceleration"]
-                ]
+                players_df.groupby("track_id")[["speed", "distance", "acceleration"]]
                 .mean()
                 .sort_values("track_id", ascending=True)
             )
@@ -203,9 +200,7 @@ class DiagramsGeneratorBase:
             return out_path
 
         except Exception as e:
-            logfire.error(
-                f"[DiagramsGenerator] Error in player dynamics chart: {e}"
-            )
+            logfire.error(f"[DiagramsGenerator] Error in player dynamics chart: {e}")
             return None
 
     def _generate_heatmap_meters(
@@ -238,17 +233,17 @@ class DiagramsGeneratorBase:
                 "Y Position (meters)",
             )
 
-            # ax.set_facecolor("#4a7c2f")
-            # ax.set_xlim(
-            #     valid_data["dx_meters"].min() - 2,
-            #     valid_data["dx_meters"].max() + 2,
-            # )
-            # ax.set_ylim(
-            #     valid_data["dy_meters"].min() - 2,
-            #     valid_data["dy_meters"].max() + 2,
-            # )
+            ax.set_facecolor("#4a7c2f")
+            ax.set_xlim(
+                valid_data["dx_meters"].min() - 2,
+                valid_data["dx_meters"].max() + 2,
+            )
+            ax.set_ylim(
+                valid_data["dy_meters"].min() - 2,
+                valid_data["dy_meters"].max() + 2,
+            )
 
-            self._draw_pitch(ax)
+            self._draw_goal_lines(ax, *ax.get_xlim(), *ax.get_ylim())
 
             hb = ax.hexbin(
                 valid_data["dx_meters"],
@@ -258,7 +253,6 @@ class DiagramsGeneratorBase:
                 alpha=0.75,
                 mincnt=1,
             )
-
 
             plt.colorbar(hb, ax=ax, label="Detection count")
             ax.invert_yaxis()
@@ -276,7 +270,6 @@ class DiagramsGeneratorBase:
         except Exception as e:
             logfire.error(f"[DiagramsGenerator] Error in heatmap (meters): {e}")
             return None
-
 
     def _generate_plot(
         self,
@@ -430,60 +423,69 @@ class DiagramsGeneratorBase:
         return speed_chart, distance_chart
 
     def _draw_pitch(self, ax):
-        FIELD_LENGTH = 105.0
-        FIELD_WIDTH = 68.0
+        GOAL_DEPTH = 2.0
+        GOAL_WIDTH = 7.32
+
+        PENALTY_AREA_LENGTH = 16.5
+        PENALTY_AREA_WIDTH = 40.32
+
+        GOAL_AREA_LENGTH = 5.5
+        GOAL_AREA_WIDTH = 18.32
+
+        CENTER_CIRCLE_RADIUS = 9.15
+        PENALTY_MARK = 11.0
 
         line_color = "#A9B5A6"
-        lw = 1.2
+        pitch_color = "#1D3A2F"
 
-        ax.set_facecolor("#1d3a2f")
+        lw = 1.4
+
+        ax.set_facecolor(pitch_color)
 
         ax.add_patch(
             Rectangle(
                 (0, 0),
-                FIELD_LENGTH,
-                FIELD_WIDTH,
+                PITCH_LENGTH,
+                PITCH_WIDTH,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
+                zorder=1,
             )
         )
 
         ax.plot(
-            [FIELD_LENGTH / 2, FIELD_LENGTH / 2],
-            [0, FIELD_WIDTH],
+            [PITCH_LENGTH / 2, PITCH_LENGTH / 2],
+            [0, PITCH_WIDTH],
             color=line_color,
             linewidth=lw,
+            zorder=1,
         )
 
         ax.add_patch(
             Circle(
-                (FIELD_LENGTH / 2, FIELD_WIDTH / 2),
-                9.15,
+                (PITCH_LENGTH / 2, PITCH_WIDTH / 2),
+                CENTER_CIRCLE_RADIUS,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
+                zorder=1,
             )
         )
 
-        ax.plot(FIELD_LENGTH / 2, FIELD_WIDTH / 2, ".", color=line_color)
-
-        ax.add_patch(
-            Rectangle(
-                (0, (FIELD_WIDTH - 40.32) / 2),
-                16.5,
-                40.32,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
+        ax.scatter(
+            PITCH_LENGTH / 2,
+            PITCH_WIDTH / 2,
+            s=20,
+            color=line_color,
+            zorder=2,
         )
 
         ax.add_patch(
             Rectangle(
-                (0, (FIELD_WIDTH - 18.32) / 2),
-                5.5,
-                18.32,
+                (0, (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2),
+                PENALTY_AREA_LENGTH,
+                PENALTY_AREA_WIDTH,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
@@ -492,34 +494,53 @@ class DiagramsGeneratorBase:
 
         ax.add_patch(
             Rectangle(
-                (-2.0, (FIELD_WIDTH - 7.32) / 2),
-                2.0,
-                7.32,
+                (0, (PITCH_WIDTH - GOAL_AREA_WIDTH) / 2),
+                GOAL_AREA_LENGTH,
+                GOAL_AREA_WIDTH,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
             )
         )
 
-        ax.plot(11, FIELD_WIDTH / 2, ".", color=line_color)
+        ax.add_patch(
+            Rectangle(
+                (-GOAL_DEPTH, (PITCH_WIDTH - GOAL_WIDTH) / 2),
+                GOAL_DEPTH,
+                GOAL_WIDTH,
+                fill=False,
+                edgecolor=line_color,
+                linewidth=lw,
+            )
+        )
+
+        ax.scatter(
+            PENALTY_MARK,
+            PITCH_WIDTH / 2,
+            s=20,
+            color=line_color,
+        )
 
         ax.add_patch(
             Arc(
-                (11, FIELD_WIDTH / 2),
+                (PENALTY_MARK, PITCH_WIDTH / 2),
                 18.3,
                 18.3,
                 theta1=310,
                 theta2=50,
-                color=line_color,
+                edgecolor=line_color,
                 linewidth=lw,
             )
         )
 
         ax.add_patch(
             Rectangle(
-                (FIELD_LENGTH - 16.5, (FIELD_WIDTH - 40.32) / 2),
-                16.5,
-                40.32,
+                (
+                    PITCH_LENGTH - PENALTY_AREA_LENGTH,
+                    (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,
+                ),
+                PENALTY_AREA_LENGTH,
+                PENALTY_AREA_WIDTH,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
@@ -528,9 +549,9 @@ class DiagramsGeneratorBase:
 
         ax.add_patch(
             Rectangle(
-                (FIELD_LENGTH - 5.5, (FIELD_WIDTH - 18.32) / 2),
-                5.5,
-                18.32,
+                (PITCH_LENGTH - GOAL_AREA_LENGTH, (PITCH_WIDTH - GOAL_AREA_WIDTH) / 2),
+                GOAL_AREA_LENGTH,
+                GOAL_AREA_WIDTH,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
@@ -539,32 +560,100 @@ class DiagramsGeneratorBase:
 
         ax.add_patch(
             Rectangle(
-                (FIELD_LENGTH, (FIELD_WIDTH - 7.32) / 2),
-                2.0,
-                7.32,
+                (PITCH_LENGTH, (PITCH_WIDTH - GOAL_WIDTH) / 2),
+                GOAL_DEPTH,
+                GOAL_WIDTH,
                 fill=False,
                 edgecolor=line_color,
                 linewidth=lw,
             )
         )
 
-        ax.plot(FIELD_LENGTH - 11, FIELD_WIDTH / 2, ".", color=line_color)
+        ax.scatter(
+            PITCH_LENGTH - PENALTY_MARK,
+            PITCH_WIDTH / 2,
+            s=20,
+            color=line_color,
+        )
 
         ax.add_patch(
             Arc(
-                (FIELD_LENGTH - 11, FIELD_WIDTH / 2),
+                (PITCH_LENGTH - PENALTY_MARK, PITCH_WIDTH / 2),
                 18.3,
                 18.3,
                 theta1=130,
                 theta2=230,
-                color=line_color,
+                edgecolor=line_color,
                 linewidth=lw,
             )
         )
 
-        ax.set_xlim(-3, FIELD_LENGTH + 3)
-        ax.set_ylim(FIELD_WIDTH + 3, -3)
+        padding = 3.0
 
-        ax.set_aspect("equal")
+        ax.set_xlim(-GOAL_DEPTH - padding, PITCH_LENGTH + GOAL_DEPTH + padding)
+        ax.set_ylim(PITCH_WIDTH + padding, -padding)
+
+        ax.set_aspect("equal", adjustable="box")
+
         ax.set_xticks([])
         ax.set_yticks([])
+        ax.invert_yaxis()
+
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+
+    def _draw_goal_lines(
+        self,
+        ax,
+        x_min: float,
+        x_max: float,
+        y_min: float,
+        y_max: float,
+        goal_width: float = 7.32,
+        color: str = "white",
+        linewidth: float = 2.5,
+    ) -> None:
+        """
+        Dibuja una linea de porteria centrada en cada uno de los 4 laterales
+        del grafico (arriba, abajo, izquierda, derecha), a modo de referencia
+        visual del campo. No dibuja el campo completo, solo las lineas.
+        """
+        x_center = (x_min + x_max) / 2
+        y_center = (y_min + y_max) / 2
+
+        half_goal_x = min(goal_width, x_max - x_min) / 2
+        half_goal_y = min(goal_width, y_max - y_min) / 2
+
+        ax.plot(
+            [x_center - half_goal_x, x_center + half_goal_x],
+            [y_min, y_min],
+            color=color,
+            linewidth=linewidth,
+            solid_capstyle="butt",
+            zorder=5,
+        )
+        ax.plot(
+            [x_center - half_goal_x, x_center + half_goal_x],
+            [y_max, y_max],
+            color=color,
+            linewidth=linewidth,
+            solid_capstyle="butt",
+            zorder=5,
+        )
+
+        ax.plot(
+            [x_min, x_min],
+            [y_center - half_goal_y, y_center + half_goal_y],
+            color=color,
+            linewidth=linewidth,
+            solid_capstyle="butt",
+            zorder=5,
+        )
+        ax.plot(
+            [x_max, x_max],
+            [y_center - half_goal_y, y_center + half_goal_y],
+            color=color,
+            linewidth=linewidth,
+            solid_capstyle="butt",
+            zorder=5,
+        )

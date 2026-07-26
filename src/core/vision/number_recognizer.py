@@ -60,6 +60,19 @@ class NumberRecognizer:
             if crop is None or crop.size == 0:
                 continue
 
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+            mser = cv2.MSER.create()
+            regions, _ = mser.detectRegions(gray)
+            logfire.info(f"[NumberRecognizer] Detected {len(regions)} regions")
+
+            if len(regions) < 4:
+                logfire.info(
+                    f"[NumberRecognizer] Not enough regions for player "
+                    f"{state.player.id} at frame {video_item.frame_num}"
+                )
+                continue
+
             consensus_number, consensus_conf = self._minicpm_predict(crop)
 
             if consensus_number is None:
@@ -77,9 +90,6 @@ class NumberRecognizer:
                 frame_number=video_item.frame_num,
                 consensus_number=consensus_number,
                 consensus_confidence=consensus_conf,
-            )
-            logfire.info(
-                f"[NumberRecognizer] Number Data: {player_number.model_dump()}"
             )
             predicted_numbers.append(player_number)
 
@@ -136,10 +146,16 @@ class NumberRecognizer:
                             "text": """You are an OCR system. Read the player's jersey number.
                             Return ONLY the jersey number.
                             Rules:
+                            - Never guess.
+                            - If there is no jersey number visible, return NONE.
+                            - If you are not completely certain, return NONE.
                             - Output digits only.
                             - Do not explain.
                             - Do not output spaces.
-                            - If uncertain return None.""",
+                            - Output ONLY:
+                                0-99
+                            or
+                                NONE""",
                         },
                     ],
                 }
@@ -172,8 +188,7 @@ class NumberRecognizer:
                 generated_ids,
                 skip_special_tokens=True,
             )
-            logfire.info(f"[NumberRecognizer] MiniCPM answer: {answer}")
-            numb, conf = self._parse_response(answer)
+            numb, conf = self._parse_response(answer[0])
             logfire.info(f"[NumberRecognizer] Parsed MiniCPM prediction: {numb} ({conf})")
 
             return numb, conf
