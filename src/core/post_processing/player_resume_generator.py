@@ -69,7 +69,6 @@ class PlayerResumeGenerator:
                 team_color_time_kde_path=player.team_color_time_kde_path or "",
                 shirt_number=player.shirt_number or 1,
                 voronoi_territories_path=player.voronoi_territories_path or "",
-                team_color_time_kde_path=player.team_color_time_kde_path or "",
             )
 
             resumes.append(resume.model_dump())

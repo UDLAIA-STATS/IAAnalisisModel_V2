@@ -1,11 +1,10 @@
 from pathlib import Path
 from typing import Tuple
 from matplotlib import pyplot as plt, ticker
-from matplotlib.patches import Ellipse, Rectangle, Circle, Arc
+from matplotlib.patches import Arc, Circle, Rectangle
 
 import logfire
 import pandas as pd
-from sqlmodel import Session, select
 
 from src.config.constants import PITCH_WIDTH, PITCH_LENGTH
 from src.entities.models.soccer.player_model import PlayerModel, PlayerState
@@ -228,22 +227,23 @@ class DiagramsGeneratorBase:
 
             fig, ax = self._generate_plot(
                 (10, 10),
-                "Player Position Heatmap (Meters)",
-                "X Position (meters)",
-                "Y Position (meters)",
+                "Player Position Heatmap (Metros)",
+                "Posición X (metros)",
+                "Posición Y (metros)",
             )
 
             ax.set_facecolor("#4a7c2f")
-            ax.set_xlim(
-                valid_data["dx_meters"].min() - 2,
-                valid_data["dx_meters"].max() + 2,
-            )
-            ax.set_ylim(
-                valid_data["dy_meters"].min() - 2,
-                valid_data["dy_meters"].max() + 2,
-            )
 
-            self._draw_goal_lines(ax, *ax.get_xlim(), *ax.get_ylim())
+            x_min = valid_data["dx_meters"].min() - 2
+            x_max = valid_data["dx_meters"].max() + 2
+            y_min = valid_data["dy_meters"].min() - 2
+            y_max = valid_data["dy_meters"].max() + 2
+
+            self._draw_pitch(ax, x_min, x_max, y_min, y_max)
+
+            # ax.set_xlim(x_min,x_max)
+            # ax.set_ylim(y_min, y_max)
+            # ax.invert_yaxis()
 
             hb = ax.hexbin(
                 valid_data["dx_meters"],
@@ -254,11 +254,17 @@ class DiagramsGeneratorBase:
                 mincnt=1,
             )
 
-            plt.colorbar(hb, ax=ax, label="Detection count")
-            ax.invert_yaxis()
+            plt.colorbar(hb, ax=ax, label="Contador de detecciones")
             plt.tight_layout()
 
             out_path = parent_dir / f"player_heatmap_meters_{stem}.png"
+            # ax.plot(
+            #     [0, 120],
+            #     [0, 0],
+            #     color="cyan",
+            #     linewidth=10,
+            #     zorder=100
+            # )
             plt.savefig(out_path)
             plt.close(fig)
 
@@ -422,185 +428,92 @@ class DiagramsGeneratorBase:
 
         return speed_chart, distance_chart
 
-    def _draw_pitch(self, ax):
-        GOAL_DEPTH = 2.0
-        GOAL_WIDTH = 7.32
+    def _draw_pitch(self, ax, x_min=None, x_max=None, y_min=None, y_max=None):
+        """
+        Dibuja SIEMPRE la cancha completa de futbol (105x68 tipico), con las 4
+        porterias laterales (A, B, C, D) como referencia visual fija.
 
+        Los parametros x_min/x_max/y_min/y_max se mantienen por compatibilidad
+        con las llamadas existentes, pero YA NO se usan para recortar/zoomear
+        la vista: el campo se muestra siempre completo para que ningun
+        heatmap/trayectoria salga cortado.
+        """
         PENALTY_AREA_LENGTH = 16.5
         PENALTY_AREA_WIDTH = 40.32
-
         GOAL_AREA_LENGTH = 5.5
         GOAL_AREA_WIDTH = 18.32
-
         CENTER_CIRCLE_RADIUS = 9.15
-        PENALTY_MARK = 11.0
-
         line_color = "#A9B5A6"
         pitch_color = "#1D3A2F"
-
         lw = 1.4
 
         ax.set_facecolor(pitch_color)
 
-        ax.add_patch(
-            Rectangle(
-                (0, 0),
-                PITCH_LENGTH,
-                PITCH_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-                zorder=1,
+        ax.add_patch(Rectangle((0, 0), PITCH_LENGTH, PITCH_WIDTH, fill=False,
+                                edgecolor=line_color, linewidth=lw, zorder=1))
+        ax.plot([PITCH_LENGTH / 2, PITCH_LENGTH / 2], [0, PITCH_WIDTH],
+                color=line_color, linewidth=lw, zorder=1)
+        ax.add_patch(Circle((PITCH_LENGTH / 2, PITCH_WIDTH / 2), CENTER_CIRCLE_RADIUS,
+                            fill=False, edgecolor=line_color, linewidth=lw, zorder=1))
+        ax.scatter(PITCH_LENGTH / 2, PITCH_WIDTH / 2, s=20, color=line_color, zorder=2)
+
+        for side in ("left", "right", "top", "bottom"):
+            self._draw_goal_box(
+                ax, side=side,
+                big_depth=PENALTY_AREA_LENGTH, big_width=PENALTY_AREA_WIDTH,
+                small_depth=GOAL_AREA_LENGTH, small_width=GOAL_AREA_WIDTH,
+                color=line_color, linewidth=lw,
             )
-        )
 
-        ax.plot(
-            [PITCH_LENGTH / 2, PITCH_LENGTH / 2],
-            [0, PITCH_WIDTH],
-            color=line_color,
-            linewidth=lw,
-            zorder=1,
-        )
-
-        ax.add_patch(
-            Circle(
-                (PITCH_LENGTH / 2, PITCH_WIDTH / 2),
-                CENTER_CIRCLE_RADIUS,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-                zorder=1,
-            )
-        )
-
-        ax.scatter(
-            PITCH_LENGTH / 2,
-            PITCH_WIDTH / 2,
-            s=20,
-            color=line_color,
-            zorder=2,
-        )
-
-        ax.add_patch(
-            Rectangle(
-                (0, (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2),
-                PENALTY_AREA_LENGTH,
-                PENALTY_AREA_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.add_patch(
-            Rectangle(
-                (0, (PITCH_WIDTH - GOAL_AREA_WIDTH) / 2),
-                GOAL_AREA_LENGTH,
-                GOAL_AREA_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.add_patch(
-            Rectangle(
-                (-GOAL_DEPTH, (PITCH_WIDTH - GOAL_WIDTH) / 2),
-                GOAL_DEPTH,
-                GOAL_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.scatter(
-            PENALTY_MARK,
-            PITCH_WIDTH / 2,
-            s=20,
-            color=line_color,
-        )
-
-        ax.add_patch(
-            Arc(
-                (PENALTY_MARK, PITCH_WIDTH / 2),
-                18.3,
-                18.3,
-                theta1=310,
-                theta2=50,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.add_patch(
-            Rectangle(
-                (
-                    PITCH_LENGTH - PENALTY_AREA_LENGTH,
-                    (PITCH_WIDTH - PENALTY_AREA_WIDTH) / 2,
-                ),
-                PENALTY_AREA_LENGTH,
-                PENALTY_AREA_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.add_patch(
-            Rectangle(
-                (PITCH_LENGTH - GOAL_AREA_LENGTH, (PITCH_WIDTH - GOAL_AREA_WIDTH) / 2),
-                GOAL_AREA_LENGTH,
-                GOAL_AREA_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.add_patch(
-            Rectangle(
-                (PITCH_LENGTH, (PITCH_WIDTH - GOAL_WIDTH) / 2),
-                GOAL_DEPTH,
-                GOAL_WIDTH,
-                fill=False,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
-        )
-
-        ax.scatter(
-            PITCH_LENGTH - PENALTY_MARK,
-            PITCH_WIDTH / 2,
-            s=20,
-            color=line_color,
-        )
-
-        ax.add_patch(
-            Arc(
-                (PITCH_LENGTH - PENALTY_MARK, PITCH_WIDTH / 2),
-                18.3,
-                18.3,
-                theta1=130,
-                theta2=230,
-                edgecolor=line_color,
-                linewidth=lw,
-            )
+        self._draw_goal_lines(
+            ax, x_min=0, x_max=PITCH_LENGTH, y_min=0, y_max=PITCH_WIDTH,
+            color=line_color, linewidth=lw,
         )
 
         padding = 3.0
+        GOAL_DEPTH = 2.0
+        full_x_min, full_x_max = -GOAL_DEPTH - padding, PITCH_LENGTH + GOAL_DEPTH + padding
+        full_y_min, full_y_max = -padding, PITCH_WIDTH + padding
 
-        ax.set_xlim(-GOAL_DEPTH - padding, PITCH_LENGTH + GOAL_DEPTH + padding)
-        ax.set_ylim(PITCH_WIDTH + padding, -padding)
+        ax.set_xlim(full_x_min, full_x_max)
+        ax.set_ylim(full_y_min, full_y_max)
 
         ax.set_aspect("equal", adjustable="box")
-
         ax.set_xticks([])
         ax.set_yticks([])
+
         ax.invert_yaxis()
 
         for spine in ax.spines.values():
             spine.set_visible(False)
+
+    def _draw_goal_box(self, ax, side, big_depth, big_width, small_depth, small_width, color, linewidth):
+        """Dibuja área grande + área chica en el lateral indicado: 'left', 'right', 'top', 'bottom'."""
+        if side == "left":
+            big_xy = (0, (PITCH_WIDTH - big_width) / 2)
+            big_size = (big_depth, big_width)
+            small_xy = (0, (PITCH_WIDTH - small_width) / 2)
+            small_size = (small_depth, small_width)
+        elif side == "right":
+            big_xy = (PITCH_LENGTH - big_depth, (PITCH_WIDTH - big_width) / 2)
+            big_size = (big_depth, big_width)
+            small_xy = (PITCH_LENGTH - small_depth, (PITCH_WIDTH - small_width) / 2)
+            small_size = (small_depth, small_width)
+        elif side == "top":
+            big_xy = ((PITCH_LENGTH - big_width) / 2, 0)
+            big_size = (big_width, big_depth)
+            small_xy = ((PITCH_LENGTH - small_width) / 2, 0)
+            small_size = (small_width, small_depth)
+        elif side == "bottom":
+            big_xy = ((PITCH_LENGTH - big_width) / 2, PITCH_WIDTH - big_depth)
+            big_size = (big_width, big_depth)
+            small_xy = ((PITCH_LENGTH - small_width) / 2, PITCH_WIDTH - small_depth)
+            small_size = (small_width, small_depth)
+        else:
+            raise ValueError(f"side inválido: {side}")
+
+        ax.add_patch(Rectangle(big_xy, *big_size, fill=False, edgecolor=color, linewidth=linewidth, zorder=1))
+        ax.add_patch(Rectangle(small_xy, *small_size, fill=False, edgecolor=color, linewidth=linewidth, zorder=1))
 
     def _draw_goal_lines(
         self,
@@ -615,15 +528,21 @@ class DiagramsGeneratorBase:
     ) -> None:
         """
         Dibuja una linea de porteria centrada en cada uno de los 4 laterales
-        del grafico (arriba, abajo, izquierda, derecha), a modo de referencia
-        visual del campo. No dibuja el campo completo, solo las lineas.
+        del grafico (arriba, abajo, izquierda, derecha).
+        Es tolerante a que los limites lleguen invertidos (p.ej. tras
+        ax.invert_yaxis()).
         """
         x_center = (x_min + x_max) / 2
         y_center = (y_min + y_max) / 2
 
-        half_goal_x = min(goal_width, x_max - x_min) / 2
-        half_goal_y = min(goal_width, y_max - y_min) / 2
+        # Usar abs() para que no importe el orden de los limites
+        x_span = abs(x_max - x_min)
+        y_span = abs(y_max - y_min)
 
+        half_goal_x = min(goal_width, x_span) / 2
+        half_goal_y = min(goal_width, y_span) / 2
+
+        # arriba / abajo (usan la coordenada Y fija tal cual llega)
         ax.plot(
             [x_center - half_goal_x, x_center + half_goal_x],
             [y_min, y_min],
@@ -641,6 +560,7 @@ class DiagramsGeneratorBase:
             zorder=5,
         )
 
+        # izquierda / derecha
         ax.plot(
             [x_min, x_min],
             [y_center - half_goal_y, y_center + half_goal_y],
@@ -657,3 +577,6 @@ class DiagramsGeneratorBase:
             solid_capstyle="butt",
             zorder=5,
         )
+
+        for spine in ax.spines.values():
+            spine.set_visible(False)

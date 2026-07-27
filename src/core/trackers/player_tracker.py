@@ -28,6 +28,7 @@ class PlayerTracker(DetectorBase):
         type: DetectorTypes = DetectorTypes.TRACKING,
     ):
         super().__init__(model, tracker_config_file, type)
+
         self.classes = {0: player_annotator}
         self.types_map = {0: PlayerModel}
 
@@ -59,8 +60,6 @@ class PlayerTracker(DetectorBase):
             end2end=True
         )
 
-
-        # logfire.info(f"[PlayerTracker] Number of tracks: {len(list(tracks))}")
         return tracks
 
     @override

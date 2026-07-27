@@ -11,7 +11,9 @@ from scipy.spatial import Voronoi
 from scipy.spatial.distance import pdist
 from matplotlib.patches import Polygon
 from matplotlib.collections import PatchCollection
-from sqlmodel import Session, col, select
+from sqlmodel import Session
+import matplotlib.ticker as mticker
+
 
 from src.core.repository.player_repository import PlayerRepository
 from src.entities.reporter.match_spatial_analyzer_base import MatchSpatialAnalyzerBase
@@ -295,20 +297,34 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             return None
 
     def _generate_time_kde_by_team(
-        self, players_df: pd.DataFrame, parent_dir: Path, stem: str
+        self,
+        players_df: pd.DataFrame,
+        parent_dir: Path,
+        stem: str,
+        target_bins: int = 90,
     ) -> Path | None:
-        """Shows team recognition percentage over time."""
+        """Shows team recognition percentage over time, with automatic time binning
+        based on the video's total duration."""
         try:
             df = players_df.copy()
-
             df = df.dropna(subset=["timestamp", "parsed_team_color"])
 
             if df.empty:
                 logfire.warning("[MatchSpatialAnalyzer] No timestamp/team color data.")
                 return None
 
+            t_min = df["timestamp"].min()
+            t_max = df["timestamp"].max()
+            duration = max(t_max - t_min, 1e-6)
+
+            nice_sizes = [0.1, 0.25, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600]
+            raw_bin = duration / target_bins
+            bin_seconds = next((s for s in nice_sizes if s >= raw_bin), nice_sizes[-1])
+
+            df["time_bin"] = ((df["timestamp"] - t_min) // bin_seconds) * bin_seconds + t_min
+
             counts = (
-                df.groupby(["timestamp", "parsed_team_color"])
+                df.groupby(["time_bin", "parsed_team_color"])
                 .size()
                 .unstack(fill_value=0)
                 .sort_index()
@@ -319,7 +335,8 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             timestamps = percentages.index.values
             n_points = len(timestamps)
 
-            fig, ax = plt.subplots(figsize=(12, 5))
+            fig_width = float(np.clip(n_points * 0.15, 12, 30))
+            fig, ax = plt.subplots(figsize=(fig_width, 5))
 
             ax.stackplot(
                 timestamps,
@@ -332,19 +349,19 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             ax.set_xlabel("Time (s)")
             ax.set_ylabel("Recognition (%)")
             ax.set_ylim(0, 100)
-            ax.set_title("Team Recognition Over Time")
-            max_ticks = 40
+            ax.set_xlim(timestamps[0], timestamps[-1])
+            ax.set_title("Presencia de equipos por tiempo", fontsize=14)
 
-            if n_points > max_ticks:
-                step = max(1, n_points // max_ticks)
-                ax.set_xticks(timestamps[::step])
+            target_ticks = 20
+            raw_tick_step = max(duration / target_ticks, bin_seconds)
+            tick_candidates = [s for s in nice_sizes if s >= bin_seconds]
+            tick_step = next((s for s in tick_candidates if s >= raw_tick_step), tick_candidates[-1])
+
+            ax.xaxis.set_major_locator(mticker.MultipleLocator(tick_step))
+            ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.2f}" if tick_step < 1 else f"{int(x)}"))
 
             ax.tick_params(axis="x", labelrotation=45)
-            ax.legend(
-                title="Team",
-                bbox_to_anchor=(1.02, 1),
-                loc="upper left",
-            )
+            ax.legend(title="Team", bbox_to_anchor=(1.02, 1), loc="upper left")
 
             plt.tight_layout()
 
@@ -352,8 +369,10 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             plt.savefig(out_path, dpi=150, bbox_inches="tight")
             plt.close(fig)
 
-            logfire.info(f"[MatchSpatialAnalyzer] Saved {out_path.as_posix()}")
-
+            logfire.info(
+                f"[MatchSpatialAnalyzer] Saved {out_path.as_posix()} "
+                f"(duration={duration:.1f}s, bin={bin_seconds}s, points={n_points})"
+            )
             return out_path
 
         except Exception as e:
@@ -454,25 +473,23 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
     ) -> Path | None:
         """Connected movement paths per track_id with start/end markers.
 
-        Uses dx_meters and dy_meters for meter-scale trajectories.
-        For display, negative coordinates are shifted into a non-negative frame
-        so the exported visualization does not expose negative distances.
+        Uses dx_meters and dy_meters plotted directly on the real-world
+        pitch frame drawn by _draw_pitch (no coordinate shifting).
         """
         try:
             valid_players = players_df.dropna(subset=["dx_meters", "dy_meters"]).copy()
             if valid_players.empty:
                 return None
 
-            x_shift = max(0.0, -float(valid_players["dx_meters"].min()))
-            y_shift = max(0.0, -float(valid_players["dy_meters"].min()))
-            valid_players["display_x"] = valid_players["dx_meters"] + x_shift
-            valid_players["display_y"] = valid_players["dy_meters"] + y_shift
-
             valid_players = valid_players.sort_values(["track_id", "frame_number"])
 
-            fig, ax = plt.subplots(figsize=(14, 10))
+            fig, ax = plt.subplots(figsize=(10, 10))
             ax.set_facecolor(self._FIELD_COLOR)
-            self._draw_goal_lines(ax, x_shift, x_shift + 105.0, y_shift, y_shift + 68.0)
+            x_min = valid_players["dx_meters"].min() - 2
+            x_max = valid_players["dx_meters"].max() + 2
+            y_min = valid_players["dy_meters"].min() - 2
+            y_max = valid_players["dy_meters"].max() + 2
+            self._draw_pitch(ax, x_min, x_max, y_min, y_max)
 
             track_ids = sorted(valid_players["track_id"].unique())
             cmap = plt.get_cmap("tab20")
@@ -491,16 +508,16 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 color = team_color if team_color else fallback_colors[idx]
 
                 ax.plot(
-                    track_data["display_x"],
-                    track_data["display_y"],
+                    track_data["dx_meters"],
+                    track_data["dy_meters"],
                     color=color,
                     alpha=0.5,
                     linewidth=1.2,
                 )
 
                 ax.scatter(
-                    track_data["display_x"].iloc[0],
-                    track_data["display_y"].iloc[0],
+                    track_data["dx_meters"].iloc[0],
+                    track_data["dy_meters"].iloc[0],
                     c="lime",
                     s=40,
                     marker="o",
@@ -510,8 +527,8 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 )
 
                 ax.scatter(
-                    track_data["display_x"].iloc[-1],
-                    track_data["display_y"].iloc[-1],
+                    track_data["dx_meters"].iloc[-1],
+                    track_data["dy_meters"].iloc[-1],
                     c="red",
                     s=60,
                     marker="X",
@@ -520,17 +537,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                     zorder=5,
                 )
 
-            ax.set_xlim(
-                valid_players["display_x"].min() - 5,
-                valid_players["display_x"].max() + 5,
-            )
-            ax.set_ylim(
-                valid_players["display_y"].max() + 5,
-                valid_players["display_y"].min() - 5,
-            )
             ax.set_title("Player Movement Trajectories", fontsize=14)
-            ax.set_xlabel("X Position", fontsize=11)
-            ax.set_ylabel("Y Position", fontsize=11)
 
             plt.tight_layout()
 
@@ -564,7 +571,6 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             )
             return []
 
-
         saved_paths: List[Tuple[int, Path]] = []
 
         for player in players:
@@ -592,24 +598,19 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
 
             try:
                 fig, ax = plt.subplots(
-                    figsize=(14, 9),
+                    figsize=(10, 10),
                     dpi=150,
                 )
 
-                self._draw_pitch(
-                    ax
-                )
+                x_min = min(x)
+                x_max = max(x)
+                y_min = min(y)
+                y_max = max(y)
 
-                x_min, x_max = ax.get_xlim()
-                y_min, y_max = ax.get_ylim()
+                self._draw_pitch(ax, x_min, x_max, y_min, y_max)
 
-                self._draw_goal_lines(
-                    ax,
-                    x_min,
-                    x_max,
-                    y_min,
-                    y_max,
-                )
+                # x_min, x_max = ax.get_xlim()
+                # y_min, y_max = ax.get_ylim()
 
                 color = "#1f77b4"
 
@@ -622,12 +623,12 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                     x,
                     y,
                     color=color,
-                    linewidth=3.2,
+                    linewidth=2,
                     alpha=1.0,
                     solid_capstyle="round",
                     zorder=3,
                     path_effects=[
-                        Stroke(linewidth=5.5, foreground="white"),
+                        Stroke(linewidth=1.5, foreground="white"),
                         Normal(),
                     ],
                 )
@@ -659,7 +660,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 ax.set_yticks([])
                 ax.set_xlabel("")
                 ax.set_ylabel("")
-                ax.invert_yaxis()
+                # ax.invert_yaxis()
 
                 title = f"Trayectoria del jugador {player.shirt_number if player.shirt_number is not None else player.id}"
 
@@ -673,7 +674,6 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                     color="black",
                     fontweight="bold",
                 )
-
 
                 plt.tight_layout()
 
@@ -713,34 +713,21 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
         return saved_paths
 
     def generate_per_player_heatmaps(
-        self, report_path: Path, match_id: int, session: Session
+        self, match_id: int, session: Session, stem: str
     ) -> List[Tuple[int, Path]]:
         """
         Generates one heatmap per player using DB states (primary source)
         and CSV as fallback enrichment.
         """
 
-        df = pd.read_csv(report_path)
-        stem = report_path.stem
         output_dir = self.player_heatmaps_dir
-
-        if df.empty:
-            logfire.warning("[MatchSpatialAnalyzer] Empty report CSV")
-            return []
 
         state_groups = group_states_by_id(match_id, session)
 
-        players_df = df[df["object_type"] == "player"].copy()
-
-        if players_df.empty and not state_groups:
+        
+        if not state_groups:
             logfire.warning("[MatchSpatialAnalyzer] No player data at all")
             return []
-
-        players_df["parsed_team_color"] = players_df["shirt_color"].apply(
-            self._parse_rgb_color
-        )
-
-        players_df["id"] = pd.to_numeric(players_df["id"], errors="coerce")
 
         saved_paths: List[Tuple[int, Path]] = []
 
@@ -759,11 +746,12 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
 
             for s in states:
                 # if s.dx_meters is None or s.dy_meters is None:
-                dx.append(s.dx)
-                dy.append(s.dy)
+                # dx.append(s.dx)
+                # dy.append(s.dy)
                 # else:
-                #     dx.append(s.dx_meters)
-                #     dy.append(s.dy_meters)
+                if s.dx_meters is not None and s.dy_meters is not None:
+                    dx.append(s.dx_meters)
+                    dy.append(s.dy_meters)
 
             if len(dx) < 3:
                 logfire.warning(
@@ -775,28 +763,16 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 fig, ax = plt.subplots(figsize=(10, 10))
 
                 ax.set_facecolor(self._FIELD_COLOR)
-                # fig.patch.set_facecolor("#4a7c2f")
-                # ax.patch.set_alpha(0.15)
+                x_min, x_max = min(dx), max(dx)
+                y_min, y_max = min(dy), max(dy)
 
-                dx_arr = pd.Series(dx)
-                dy_arr = pd.Series(dy)
+                self._draw_pitch(ax, x_min, x_max, y_min, y_max)
 
-                x_min, x_max = dx_arr.min(), dx_arr.max()
-                y_min, y_max = dy_arr.min(), dy_arr.max()
+                dx_arr = pd.to_numeric(pd.Series(dx), errors="coerce")
+                dy_arr = pd.to_numeric(pd.Series(dy), errors="coerce")
 
-                x_pad = max((x_max - x_min) * 0.1, 2)
-                y_pad = max((y_max - y_min) * 0.1, 2)
-
-                ax.set_xlim(x_min - x_pad, x_max + x_pad)
-                ax.set_ylim(y_min - y_pad, y_max + y_pad)
-
-                self._draw_goal_lines(
-                    ax,
-                    x_min - x_pad,
-                    x_max + x_pad,
-                    y_min - y_pad,
-                    y_max + y_pad,
-                )
+                valid_mask = dx_arr.notna() & dy_arr.notna()
+                dx_arr, dy_arr = dx_arr[valid_mask], dy_arr[valid_mask]
 
                 hb = ax.hexbin(
                     dx_arr,
@@ -805,16 +781,11 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                     cmap="YlOrRd",
                     alpha=0.95,
                     mincnt=1,
+                    zorder=0.5
                 )
 
                 cbar = plt.colorbar(hb, ax=ax)
                 cbar.set_label("Densidad")
-
-                ax.set_xticks([])
-                ax.set_yticks([])
-                ax.set_xlabel("")
-                ax.set_ylabel("")
-                ax.invert_yaxis()
 
                 ax.set_title(
                     f"Mapa de calor: {label}\n",
@@ -839,8 +810,6 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 )
                 continue
 
-        logfire.info(
-            f"[MatchSpatialAnalyzer] Generated {len(saved_paths)} heatmaps"
-        )
+        logfire.info(f"[MatchSpatialAnalyzer] Generated {len(saved_paths)} heatmaps")
 
         return saved_paths

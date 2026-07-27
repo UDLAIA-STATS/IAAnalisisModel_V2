@@ -43,7 +43,7 @@ class DetectionsReporter(DetectionsReporterBase):
             dist_matrix_chart,
             traj_chart,
         ) = self.spatial_analyzer.generate_spatial_diagrams(report_path, match_id)
-        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(report_path, match_id, session) 
+        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(match_id, session, stem=str(match_id)) 
         player_trajectories = self.spatial_analyzer.generate_per_player_movement_trajectories(match_id, session)
         
 

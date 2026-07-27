@@ -98,6 +98,19 @@ class NumberAndColorRecognition(AnalysisStepHandler):
                     detections=None,
                     labels=labels,
                 )
+            elif len(labels) > len(player_annotator.get_detections()):
+                labels = labels[: len(player_annotator.get_detections())]
+                video_item.annotated_frame = player_annotator.annotate(
+                    annotated_frame=video_item.annotated_frame,
+                    detections=None,
+                    labels=labels,
+                )
+            else:
+                video_item.annotated_frame = player_annotator.annotate(
+                    annotated_frame=video_item.annotated_frame,
+                    detections=None,
+                    labels=["Jugador" for _ in range(len(player_annotator.get_detections()))],
+                )
 
             session.commit()
             return True
