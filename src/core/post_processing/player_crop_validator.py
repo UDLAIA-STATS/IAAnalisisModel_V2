@@ -22,7 +22,7 @@ from src.config.configuration import settings
 # Color recognizer
 from src.core.vision.color_recognizer import jersey_color_extractor
 from skimage.color import deltaE_ciede2000, rgb2lab
-
+from scipy.spatial.distance import cosine
 
 class PlayerCropValidator:
     """
@@ -54,10 +54,14 @@ class PlayerCropValidator:
     """
 
     YOLO_CONFIDENCE_THRESHOLD: float = 0.15
-    COSINE_DISTANCE_THRESHOLD: float = 0.15
+    COSINE_DISTANCE_THRESHOLD: float = 0.15  # ya no se usa en el clustering, la dejo por si la referenciás en otro lado
     MIN_PLAYERS_TO_CLUSTER: int = 3
     MIN_SEGMENTS_FOR_COMPLETENESS: int = 3  # "más de 3 segmentos" -> completo
     COLOR_SIMILARITY_THRESHOLD: float = 10.0
+    EMBEDDING_WEIGHT: float = 0.6
+    COLOR_WEIGHT: float = 0.4
+    COMBINED_DISTANCE_THRESHOLD: float = 0.35
+    INCOMPATIBLE_NUMBER_DISTANCE: float = 999.0
 
     YOLO_MODEL_PATH: str = PLAYER_MODEL_PATH.as_posix()
 
@@ -245,78 +249,144 @@ class PlayerCropValidator:
 
     # --------------------- Condición 2: similitud/fusión ---------------------
 
-    def _cluster_embeddings_and_color(self, player_data: List[Dict]) -> List[List[int]]:
-        """
-        Condición 2: agrupa primero por embeddings (distancia coseno), luego
-        subdivide cada grupo por color de uniforme y número de camiseta.
-
-        Dos jugadores se fusionan solo si, simultáneamente:
-          - Son similares en embedding (vectorialmente).
-          - Tienen colores de uniforme similares (ambos detectados y
-            deltaE < COLOR_SIMILARITY_THRESHOLD).
-          - Sus números de camiseta son compatibles: ambos None, uno None,
-            o iguales. Si ambos números están presentes y difieren, NUNCA
-            se fusionan (quedan en clusters/grupos distintos).
-
-        Esta función solo decide fusiones; nunca marca jugadores para
-        eliminación (eso corresponde exclusivamente a la Condición 1).
-        """
-        if len(player_data) < 2:
-            return [[d["player_id"] for d in player_data]]
-
-        ids = [d["player_id"] for d in player_data]
-        embeddings = np.array([d["embedding"] for d in player_data])
-        colors_lab = [d.get("color_lab") for d in player_data]
-        shirt_numbers = [d.get("shirt_number") for d in player_data]
-
-        dist_matrix = pdist(embeddings, metric="cosine")
-        Z = linkage(dist_matrix, method="average")
-        clusters = fcluster(Z, self.COSINE_DISTANCE_THRESHOLD, criterion="distance")
-        cluster_dict = {}
-        for idx, cluster_id in enumerate(clusters):
-            cluster_dict.setdefault(cluster_id, []).append(idx)
-
-        final_clusters = []
-
-        for indices in cluster_dict.values():
-            if len(indices) == 1:
-                final_clusters.append([ids[i] for i in indices])
-                continue
-
-            remaining = set(indices)
-            while remaining:
-                ref_idx = next(iter(remaining))
-                ref_lab = colors_lab[ref_idx]
-                ref_num = shirt_numbers[ref_idx]
-                group = [ref_idx]
-                remaining.remove(ref_idx)
-
-                to_remove = []
-                for idx in remaining:
-                    other_lab = colors_lab[idx]
-                    other_num = shirt_numbers[idx]
-
-                    color_ok = (
-                        ref_lab is not None
-                        and other_lab is not None
-                        and self._colors_are_similar(ref_lab, other_lab)
-                    )
-                    # Números de camiseta incompatibles (ambos presentes y
-                    # distintos) bloquean la fusión sin importar lo demás.
-                    num_ok = (
-                        ref_num is None or other_num is None or ref_num == other_num
-                    )
-
-                    if color_ok and num_ok:
-                        group.append(idx)
-                        to_remove.append(idx)
-
-                for idx in to_remove:
-                    remaining.remove(idx)
-
-                final_clusters.append([ids[i] for i in group])
-
-        return final_clusters
+    
+def _combined_pair_distance(
+    self,
+    i: int,
+    j: int,
+    embeddings: list,
+    colors_lab: list,
+    shirt_numbers: list,
+) -> float:
+    """
+    Distancia combinada entre dos jugadores (índices i, j dentro de
+    player_data), mezclando embedding + color, con bloqueo duro por
+    número de camiseta incompatible.
+ 
+    - Si ambos números de camiseta están presentes y son distintos ->
+      distancia gigante (nunca se fusionan), igual que en la lógica
+      original.
+    - Si alguno de los dos números es None (o ambos) -> el número no
+      bloquea nada, se decide solo por embedding + color.
+    - El color solo pesa si AMBOS colores fueron extraídos con éxito;
+      si falta alguno, se usa una penalización neutra (ni ayuda ni
+      perjudica demasiado la fusión) para no castigar crops donde el
+      extractor de color falló pero el jugador es claramente el mismo
+      por embedding.
+    """
+    num_i = shirt_numbers[i]
+    num_j = shirt_numbers[j]
+    if num_i is not None and num_j is not None and num_i != num_j:
+        return self.INCOMPATIBLE_NUMBER_DISTANCE
+ 
+    emb_dist = cosine(embeddings[i], embeddings[j])
+ 
+    lab_i = colors_lab[i]
+    lab_j = colors_lab[j]
+    if lab_i is not None and lab_j is not None:
+        try:
+            # deltaE CIEDE2000 típicamente está en rango 0-100+, se
+            # normaliza a una escala comparable con la distancia coseno
+            # (0-2 aprox, casi siempre 0-1 en la práctica).
+            color_dist = float(deltaE_ciede2000(lab_i, lab_j)) / 100.0
+        except Exception:
+            color_dist = 0.5
+    else:
+        color_dist = 0.5  # penalización neutra, color desconocido
+ 
+    return self.EMBEDDING_WEIGHT * emb_dist + self.COLOR_WEIGHT * color_dist
+ 
+ 
+def _build_combined_distance_matrix(self, player_data: list) -> np.ndarray:
+    """
+    Construye la matriz de distancia condensada (formato que espera
+    scipy.cluster.hierarchy.linkage) combinando embedding + color +
+    número de camiseta para todos los pares de jugadores.
+    """
+    n = len(player_data)
+    embeddings = [d["embedding"] for d in player_data]
+    colors_lab = [d.get("color_lab") for d in player_data]
+    shirt_numbers = [d.get("shirt_number") for d in player_data]
+ 
+    condensed = []
+    for i in range(n):
+        for j in range(i + 1, n):
+            condensed.append(
+                self._combined_pair_distance(
+                    i, j, embeddings, colors_lab, shirt_numbers
+                )
+            )
+    return np.array(condensed)
+ 
+ 
+def _cluster_embeddings_and_color(self, player_data: list) -> list:
+    """
+    Condición 2 (versión combinada): agrupa jugadores en un único paso
+    de clustering jerárquico sobre una distancia que mezcla embedding,
+    color y número de camiseta. Reemplaza el enfoque anterior de
+    "clusterizar por embedding y subdividir después", que perdía
+    fusiones válidas cuando el embedding por sí solo no alcanzaba el
+    umbral aunque color y número coincidieran.
+ 
+    Nunca elimina jugadores; solo decide qué IDs van juntos en cada
+    cluster (eso lo sigue haciendo exclusivamente la Condición 1).
+    """
+    if len(player_data) < 2:
+        return [[d["player_id"] for d in player_data]]
+ 
+    ids = [d["player_id"] for d in player_data]
+    condensed = self._build_combined_distance_matrix(player_data)
+ 
+    Z = linkage(condensed, method="average")
+    cluster_labels = fcluster(
+        Z, self.COMBINED_DISTANCE_THRESHOLD, criterion="distance"
+    )
+ 
+    cluster_dict = {}
+    for idx, cluster_id in enumerate(cluster_labels):
+        cluster_dict.setdefault(cluster_id, []).append(ids[idx])
+ 
+    return list(cluster_dict.values())
+ 
+ 
+# --------------------- Herramienta de calibración (opcional) ---------------------
+ 
+def diagnose_threshold(self, player_data: list, known_duplicate_pairs: list):
+    """
+    Función de diagnóstico, NO para producción. Sirve para calibrar
+    COMBINED_DISTANCE_THRESHOLD con casos reales.
+ 
+    Uso:
+        # known_duplicate_pairs: lista de tuplas (player_id_a, player_id_b)
+        # que vos SABÉS que son el mismo jugador duplicado en la BD.
+        validator.diagnose_threshold(player_data, [(101, 205), (102, 340)])
+ 
+    Imprime la distancia combinada real para cada par conocido, para que
+    puedas fijar el umbral apenas por encima del valor más alto observado
+    entre duplicados verdaderos (y confirmar que sigue por debajo de la
+    distancia entre jugadores distintos).
+    """
+    id_to_idx = {d["player_id"]: i for i, d in enumerate(player_data)}
+    embeddings = [d["embedding"] for d in player_data]
+    colors_lab = [d.get("color_lab") for d in player_data]
+    shirt_numbers = [d.get("shirt_number") for d in player_data]
+ 
+    print("=== Distancias combinadas entre pares CONOCIDOS como duplicados ===")
+    for pid_a, pid_b in known_duplicate_pairs:
+        if pid_a not in id_to_idx or pid_b not in id_to_idx:
+            print(f"  ({pid_a}, {pid_b}): uno de los dos no está en player_data, se saltea")
+            continue
+        i, j = id_to_idx[pid_a], id_to_idx[pid_b]
+        dist = self._combined_pair_distance(i, j, embeddings, colors_lab, shirt_numbers)
+        emb_dist = cosine(embeddings[i], embeddings[j])
+        print(
+            f"  player {pid_a} <-> player {pid_b}: "
+            f"combinada={dist:.4f}  (embedding_solo={emb_dist:.4f})"
+        )
+    print(
+        "\nSugerencia: fijá COMBINED_DISTANCE_THRESHOLD un poco por encima "
+        "del valor más alto de 'combinada' que veas arriba entre duplicados reales."
+    )
 
     def _select_primary_player(
         self, cluster_ids: List[int], player_data: List[Dict]
