@@ -67,7 +67,7 @@ class PlayerResumeGenerator:
                 avg_possession_time_s=truncate(player.ball_possession_time, 6),
                 player_movement_trajectories_path=player.player_movement_trajectories_path or "",
                 team_color_time_kde_path=player.team_color_time_kde_path or "",
-                shirt_number=player.shirt_number or 1,
+                shirt_number=player.shirt_number or 0,
                 voronoi_territories_path=player.voronoi_territories_path or "",
             )
 

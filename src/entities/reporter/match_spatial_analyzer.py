@@ -321,7 +321,9 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             raw_bin = duration / target_bins
             bin_seconds = next((s for s in nice_sizes if s >= raw_bin), nice_sizes[-1])
 
-            df["time_bin"] = ((df["timestamp"] - t_min) // bin_seconds) * bin_seconds + t_min
+            df["time_bin"] = (
+                (df["timestamp"] - t_min) // bin_seconds
+            ) * bin_seconds + t_min
 
             counts = (
                 df.groupby(["time_bin", "parsed_team_color"])
@@ -355,10 +357,16 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             target_ticks = 20
             raw_tick_step = max(duration / target_ticks, bin_seconds)
             tick_candidates = [s for s in nice_sizes if s >= bin_seconds]
-            tick_step = next((s for s in tick_candidates if s >= raw_tick_step), tick_candidates[-1])
+            tick_step = next(
+                (s for s in tick_candidates if s >= raw_tick_step), tick_candidates[-1]
+            )
 
             ax.xaxis.set_major_locator(mticker.MultipleLocator(tick_step))
-            ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.2f}" if tick_step < 1 else f"{int(x)}"))
+            ax.xaxis.set_major_formatter(
+                mticker.FuncFormatter(
+                    lambda x, _: f"{x:.2f}" if tick_step < 1 else f"{int(x)}"
+                )
+            )
 
             ax.tick_params(axis="x", labelrotation=45)
             ax.legend(title="Team", bbox_to_anchor=(1.02, 1), loc="upper left")
@@ -473,8 +481,11 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
     ) -> Path | None:
         """Connected movement paths per track_id with start/end markers.
 
-        Uses dx_meters and dy_meters plotted directly on the real-world
-        pitch frame drawn by _draw_pitch (no coordinate shifting).
+        Uses dx_meters and dy_meters directly (real-world pitch coordinates),
+        sin desplazar nada, para que el 0 de X y el 0 de Y siempre representen
+        el mismo punto fisico de la cancha, consistente con las demas funciones
+        de este mismo modulo (generate_per_player_movement_trajectories y
+        generate_per_player_heatmaps).
         """
         try:
             valid_players = players_df.dropna(subset=["dx_meters", "dy_meters"]).copy()
@@ -483,13 +494,8 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
 
             valid_players = valid_players.sort_values(["track_id", "frame_number"])
 
-            fig, ax = plt.subplots(figsize=(10, 10))
+            fig, ax = plt.subplots(figsize=(14, 10))
             ax.set_facecolor(self._FIELD_COLOR)
-            x_min = valid_players["dx_meters"].min() - 2
-            x_max = valid_players["dx_meters"].max() + 2
-            y_min = valid_players["dy_meters"].min() - 2
-            y_max = valid_players["dy_meters"].max() + 2
-            self._draw_pitch(ax, x_min, x_max, y_min, y_max)
 
             track_ids = sorted(valid_players["track_id"].unique())
             cmap = plt.get_cmap("tab20")
@@ -518,26 +524,30 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 ax.scatter(
                     track_data["dx_meters"].iloc[0],
                     track_data["dy_meters"].iloc[0],
-                    c="lime",
-                    s=40,
-                    marker="o",
-                    edgecolors="black",
-                    linewidths=0.5,
-                    zorder=5,
+                    c="lime", s=40, marker="o",
+                    edgecolors="black", linewidths=0.5, zorder=5,
                 )
 
                 ax.scatter(
                     track_data["dx_meters"].iloc[-1],
                     track_data["dy_meters"].iloc[-1],
-                    c="red",
-                    s=60,
-                    marker="X",
-                    edgecolors="black",
-                    linewidths=0.5,
-                    zorder=5,
+                    c="red", s=60, marker="X",
+                    edgecolors="black", linewidths=0.5, zorder=5,
                 )
 
-            ax.set_title("Player Movement Trajectories", fontsize=14)
+            ax.set_xlim(
+                valid_players["dx_meters"].min() - 5,
+                valid_players["dx_meters"].max() + 5,
+            )
+            ax.set_ylim(
+                valid_players["dy_meters"].min() - 5,
+                valid_players["dy_meters"].max() + 5,
+            )
+            ax.invert_yaxis()  # misma convencion que las otras dos funciones
+
+            ax.set_title("Diagrama de trayectorias", fontsize=14)
+            ax.set_xlabel("Posición X", fontsize=11)
+            ax.set_ylabel("Posición Y", fontsize=11)
 
             plt.tight_layout()
 
@@ -598,19 +608,9 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
 
             try:
                 fig, ax = plt.subplots(
-                    figsize=(10, 10),
+                    figsize=(14, 9),
                     dpi=150,
                 )
-
-                x_min = min(x)
-                x_max = max(x)
-                y_min = min(y)
-                y_max = max(y)
-
-                self._draw_pitch(ax, x_min, x_max, y_min, y_max)
-
-                # x_min, x_max = ax.get_xlim()
-                # y_min, y_max = ax.get_ylim()
 
                 color = "#1f77b4"
 
@@ -623,12 +623,12 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                     x,
                     y,
                     color=color,
-                    linewidth=2,
+                    linewidth=3.2,
                     alpha=1.0,
                     solid_capstyle="round",
                     zorder=3,
                     path_effects=[
-                        Stroke(linewidth=1.5, foreground="white"),
+                        Stroke(linewidth=5.5, foreground="white"),
                         Normal(),
                     ],
                 )
@@ -660,7 +660,7 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 ax.set_yticks([])
                 ax.set_xlabel("")
                 ax.set_ylabel("")
-                # ax.invert_yaxis()
+                ax.invert_yaxis()
 
                 title = f"Trayectoria del jugador {player.shirt_number if player.shirt_number is not None else player.id}"
 
@@ -713,21 +713,34 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
         return saved_paths
 
     def generate_per_player_heatmaps(
-        self, match_id: int, session: Session, stem: str
+        self, report_path: Path, match_id: int, session: Session
     ) -> List[Tuple[int, Path]]:
         """
         Generates one heatmap per player using DB states (primary source)
         and CSV as fallback enrichment.
         """
 
+        df = pd.read_csv(report_path)
+        stem = report_path.stem
         output_dir = self.player_heatmaps_dir
+
+        if df.empty:
+            logfire.warning("[MatchSpatialAnalyzer] Empty report CSV")
+            return []
 
         state_groups = group_states_by_id(match_id, session)
 
-        
-        if not state_groups:
+        players_df = df[df["object_type"] == "player"].copy()
+
+        if players_df.empty and not state_groups:
             logfire.warning("[MatchSpatialAnalyzer] No player data at all")
             return []
+
+        players_df["parsed_team_color"] = players_df["shirt_color"].apply(
+            self._parse_rgb_color
+        )
+
+        players_df["id"] = pd.to_numeric(players_df["id"], errors="coerce")
 
         saved_paths: List[Tuple[int, Path]] = []
 
@@ -745,10 +758,6 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
             dy = []
 
             for s in states:
-                # if s.dx_meters is None or s.dy_meters is None:
-                # dx.append(s.dx)
-                # dy.append(s.dy)
-                # else:
                 if s.dx_meters is not None and s.dy_meters is not None:
                     dx.append(s.dx_meters)
                     dy.append(s.dy_meters)
@@ -763,16 +772,20 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                 fig, ax = plt.subplots(figsize=(10, 10))
 
                 ax.set_facecolor(self._FIELD_COLOR)
-                x_min, x_max = min(dx), max(dx)
-                y_min, y_max = min(dy), max(dy)
+                # fig.patch.set_facecolor("#4a7c2f")
+                # ax.patch.set_alpha(0.15)
 
-                self._draw_pitch(ax, x_min, x_max, y_min, y_max)
+                dx_arr = pd.Series(dx)
+                dy_arr = pd.Series(dy)
 
-                dx_arr = pd.to_numeric(pd.Series(dx), errors="coerce")
-                dy_arr = pd.to_numeric(pd.Series(dy), errors="coerce")
+                x_min, x_max = dx_arr.min(), dx_arr.max()
+                y_min, y_max = dy_arr.min(), dy_arr.max()
 
-                valid_mask = dx_arr.notna() & dy_arr.notna()
-                dx_arr, dy_arr = dx_arr[valid_mask], dy_arr[valid_mask]
+                x_pad = max((x_max - x_min) * 0.1, 2)
+                y_pad = max((y_max - y_min) * 0.1, 2)
+
+                ax.set_xlim(x_min - x_pad, x_max + x_pad)
+                ax.set_ylim(y_min - y_pad, y_max + y_pad)
 
                 hb = ax.hexbin(
                     dx_arr,
@@ -781,11 +794,16 @@ class MatchSpatialAnalyzer(MatchSpatialAnalyzerBase):
                     cmap="YlOrRd",
                     alpha=0.95,
                     mincnt=1,
-                    zorder=0.5
                 )
 
                 cbar = plt.colorbar(hb, ax=ax)
                 cbar.set_label("Densidad")
+
+                ax.set_xticks([])
+                ax.set_yticks([])
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                ax.invert_yaxis()
 
                 ax.set_title(
                     f"Mapa de calor: {label}\n",
