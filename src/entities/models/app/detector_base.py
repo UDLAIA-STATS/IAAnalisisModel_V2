@@ -69,7 +69,7 @@ class DetectorBase:
                 verbose=False, device=self.device)
 
     def extract_detections(
-        self, results: Sequence[Union[Results, Detections]], objects_ids: List[int], video_item: VideoItem
+        self, results, objects_ids: List[int], video_item: VideoItem
     ) -> dict[int, List[TrackData]]:
         detections_map: dict[int, List[TrackData]] = {}
         detections = Detections.from_ultralytics(results[0])
@@ -91,7 +91,6 @@ class DetectorBase:
 
         return detections_map
 
-    # TODO: At the return of the item the detection mixes with others objects, it needs to be separated
     def _extract_tracks_data(self, detections: Detections) -> Generator[TrackData, None, None]:
         for i in range(len(detections)):
             if detections is None:

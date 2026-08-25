@@ -6,7 +6,7 @@ import logfire
 import numpy as np
 import pandas as pd
 
-from src.entities.reporter.diagrams_generator import DiagramsGeneratorBase
+from src.entities.reporter.diagrams_generator_base import DiagramsGeneratorBase
 
 
 class MatchSpatialAnalyzerBase(DiagramsGeneratorBase, ABC):

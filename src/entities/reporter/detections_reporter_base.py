@@ -8,7 +8,7 @@ from sqlmodel import Session
 
 from src.entities.models.app.report_models import ReportRow
 from src.entities.reporter import NumberReporter
-from src.entities.reporter.diagrams_generator import DiagramsGeneratorBase
+from src.entities.reporter.diagrams_generator_base import DiagramsGeneratorBase
 from src.core.repository.homography_repository import HomographyRepository
 from src.entities.types.bucket_types import FilePurposeTypes
 from src.core.repository import BallRepository, GoalRepository, PlayerRepository, files_repository

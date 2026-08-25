@@ -1,4 +1,4 @@
 from .homography_constants import (
-    FIELD_KEYPOINTS, FIELD_HEIGHT, PITCH_WIDTH
+    FIELD_KEYPOINTS, PITCH_WIDTH, PITCH_LENGTH
 )
 from .homography_models import DetectedKeypoint, HomographyResult, CleanHomographyFrame

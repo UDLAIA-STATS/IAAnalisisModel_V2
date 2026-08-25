@@ -116,6 +116,15 @@ class NumberMatching:
                 col(PlayerNumbers.confidence) > 0.6,
             )
         ).all()
+
+        if len(number_rows) == 0:
+            number_rows = session.exec(
+                select(PlayerNumbers).where(
+                    col(PlayerNumbers.player_id).in_(player_ids),
+                    col(PlayerNumbers.confidence) > 0.5,
+                )
+            ).all()
+
         state_rows = session.exec(
             select(PlayerState).where(col(PlayerState.player_id).in_(player_ids))
         ).all()

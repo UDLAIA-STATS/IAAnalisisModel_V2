@@ -8,6 +8,7 @@ class PlayerResume(BaseModel):
 
     team_color: str
     shirt_number: int
+    team_goals: int
     goals: int
     passes: int
 
@@ -20,3 +21,6 @@ class PlayerResume(BaseModel):
     heatmap_image_path: str
     team_heatmap_path: str
     movement_trajectories_path: str
+    player_movement_trajectories_path: str
+    team_color_time_kde_path: str
+    voronoi_territories_path: str

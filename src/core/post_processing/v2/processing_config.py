@@ -9,13 +9,13 @@ class PostProcessingConfig:
     use_ml: bool = True
     train_sample_fraction: float = 0.8          # Fracción de datos etiquetados para entrenar
     model_dir: Path = POST_PROCESSING_MODELS             # Directorio para guardar/cargar modelos
-    force_retrain: bool = True                 # Si True, ignora modelos guardados
+    force_retrain: bool = False                 # Si True, ignora modelos guardados
     fallback_to_heuristic: bool = True          # Si falla ML, usar heurística
     cache_dataframes: bool = True               # Cachear DataFrames intermedios
 
     # Umbrales para detección
-    possession_threshold: float = 0.5
-    shot_threshold: float = 0.4
+    possession_threshold: float = 0.3
+    shot_threshold: float = 0.35
     goal_association_window: float = 8.0        # segundos
     min_possession_seconds: float = 0.1
 
@@ -26,8 +26,8 @@ class PostProcessingConfig:
     max_ball_speed_kmh: float = 130.0
     max_ball_accel_mss: float = 150.0
     static_speed_threshold: float = 0.5         # km/h
-    static_frame_threshold: int = 8
-    goal_zone_margin_px: float = 150.0
+    static_frame_threshold: int = 3
+    goal_zone_margin_px: float = 250.0
 
     # Interpolación
     max_interpolation_gap: int = 10
@@ -38,6 +38,7 @@ class PostProcessingConfig:
     min_post_area: float = 500.0
     min_consecutive_frames: int = 1
     cluster_distance_threshold: float = 150.0   # px
+    goal_event_gap_frames: int = 45
 
     # Modelos de trayectoria (regresión)
     trajectory_window: int = 5
@@ -52,3 +53,4 @@ class PostProcessingConfig:
     max_shot_speed_kmh: float = 120.0
     near_goal_cm_threshold: float = 300.0       # cm
     goal_area_reduction_factor: float = 0.75
+    team_credit_max_dist_m: float = 32.0

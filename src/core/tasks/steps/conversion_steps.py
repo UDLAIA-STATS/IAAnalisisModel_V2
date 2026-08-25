@@ -31,13 +31,11 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
         states = PlayerStatesRepository.get_states_by_frame(
             video_item.match_id, video_item.frame_num, session=session
         )
-        # actual_depth = player_depth_calculator.get_last_depth()
         actual_scale = scale_motion_detector.get_current_scale()
         actual_pixel_conversion = pixel_conversion_handler.calculate_value(video_item.frame)
         actual_tilt = tilt_detector.get_current_tilt()
-        # logfire.info(f"[ConversionCalculator] Actual tilt: {actual_tilt}")
         
-        if self.last_kp_calculated == 0 or self.last_kp_calculated + self.frame_step * 3 <= video_item.frame_num:
+        if self.last_kp_calculated == 0 or self.last_kp_calculated + self.frame_step * 1.5 <= video_item.frame_num:
             result = pitch_homography.calibrate(
             video_item,
             actual_scale,
@@ -53,14 +51,6 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
 
         try:
             for state in states:
-                # last_player_depth = DepthRepository.get_depth_by_player(
-                #     state.player.match_id,
-                #     state.player_id,
-                #     video_item.frame_num,
-                #     session=session,
-                # )
-
-
                 depth_history = DepthHistory(
                     player_id=state.player_id,
                     match_id=video_item.match_id,
@@ -73,21 +63,9 @@ class ConversionCalculatorSteps(AnalysisStepHandler):
                     and video_item.frame_num - self.last_frame_calculated
                     > self.frame_step
                 ):
-                    # bbox = [int(state.x1), int(state.y1), int(state.x2), int(state.y2)]
                     actual_scale = scale_motion_detector.update(video_item.frame)
                     actual_tilt  = tilt_detector.update(video_item.frame)
-                    # actual_depth = player_depth_calculator.process_player_depth(
-                    #     bbox=bbox,
-                    #     current_camera_scale=actual_scale,
-                    #     frame=video_item.frame,
-                    #     frame_num=video_item.frame_num,
-                    # )
 
-                # elif last_player_depth is not None:
-                #     depth_history.depth = last_player_depth.depth
-                #     depth_history.camera_scale = last_player_depth.camera_scale
-
-                # depth_history.depth = float(actual_depth)
                 depth_history.pixels_to_meters = float(actual_pixel_conversion)
                 depth_history.camera_scale = float(actual_scale)
 

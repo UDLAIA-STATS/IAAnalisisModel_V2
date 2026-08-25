@@ -12,9 +12,9 @@ from src.entities.homography.homography_cluster import HomographyCluster
 from src.entities.homography.homography_lines_operations import HomographyLinesOperation
 from src.entities.utils.homography_utils import _line_intersection, _reprojection_error
 from src.entities.models.homography.homography_constants import (
-    FIELD_HEIGHT,
-    FIELD_KEYPOINTS,
     PITCH_WIDTH,
+    FIELD_KEYPOINTS,
+    PITCH_LENGTH,
 )
 from src.entities.models.homography.homography_models import (
     CalibratorBase,
@@ -29,8 +29,8 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         self,
         predetermined_points: dict[str, tuple[float, float]],
         reference_scale: float = 1.0,
-        pitch_width: float = PITCH_WIDTH,
-        pitch_height: float = FIELD_HEIGHT,
+        pitch_width: float = PITCH_LENGTH,
+        pitch_height: float = PITCH_WIDTH,
         min_keypoints: int = 4,
         ransac_threshold: float = 5.0,
         detection_confidence_threshold: float = 0.5,
@@ -392,8 +392,8 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
         for x, y in projected:
             x, y = float(x), float(y)
             if (
-                -margin <= x <= PITCH_WIDTH + margin
-                and -margin <= y <= FIELD_HEIGHT + margin
+                -margin <= x <= PITCH_LENGTH + margin
+                and -margin <= y <= PITCH_WIDTH + margin
             ):
                 results.append((x, y))
             else:
@@ -402,8 +402,8 @@ class HomographyBase(HomographyCluster, HomographyLinesOperation):
                     x_corr, y_corr = self.scale_corrector.correct_point(x, y, match_id)
                     # Verificar si la corrección lo trajo dentro del campo
                     if (
-                        -margin <= x_corr <= PITCH_WIDTH + margin
-                        and -margin <= y_corr <= FIELD_HEIGHT + margin
+                        -margin <= x_corr <= PITCH_LENGTH + margin
+                        and -margin <= y_corr <= PITCH_WIDTH + margin
                     ):
                         results.append((x_corr, y_corr))
                     else:

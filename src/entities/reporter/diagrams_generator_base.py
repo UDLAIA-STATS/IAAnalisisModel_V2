@@ -1,11 +1,15 @@
 from pathlib import Path
 from typing import Tuple
 from matplotlib import pyplot as plt, ticker
+from matplotlib.patches import Arc, Circle, Rectangle
 
 import logfire
 import pandas as pd
 
+from src.config.constants import PITCH_WIDTH, PITCH_LENGTH
+from src.entities.models.soccer.player_model import PlayerModel, PlayerState
 from src.config.routes import DIAGRAMS_DIR
+
 
 class DiagramsGeneratorBase:
     _TRACK_COLORS = [
@@ -54,9 +58,7 @@ class DiagramsGeneratorBase:
                 players_df, parent_dir, stem
             )
 
-            heatmap_chart = self._generate_heatmap_meters(
-                players_df, parent_dir, stem
-            )
+            heatmap_chart = self._generate_heatmap_meters(players_df, parent_dir, stem)
 
         return (
             class_chart.as_posix() if class_chart else "",
@@ -64,7 +66,6 @@ class DiagramsGeneratorBase:
             dynamics_chart.as_posix() if dynamics_chart else "",
             heatmap_chart.as_posix() if heatmap_chart else "",
         )
-
 
     def _generate_class_counts_chart(
         self, df: pd.DataFrame, parent_dir: Path, stem: str
@@ -74,9 +75,7 @@ class DiagramsGeneratorBase:
         Includes all object types present in the report.
         """
         try:
-            class_counts = (
-                df.groupby("object_type").size().sort_values(ascending=False)
-            )
+            class_counts = df.groupby("object_type").size().sort_values(ascending=False)
 
             fig, ax = self._generate_plot(
                 (8, 5),
@@ -163,9 +162,7 @@ class DiagramsGeneratorBase:
         """
         try:
             player_dynamics = (
-                players_df.groupby("track_id")[
-                    ["speed", "distance", "acceleration"]
-                ]
+                players_df.groupby("track_id")[["speed", "distance", "acceleration"]]
                 .mean()
                 .sort_values("track_id", ascending=True)
             )
@@ -202,9 +199,7 @@ class DiagramsGeneratorBase:
             return out_path
 
         except Exception as e:
-            logfire.error(
-                f"[DiagramsGenerator] Error in player dynamics chart: {e}"
-            )
+            logfire.error(f"[DiagramsGenerator] Error in player dynamics chart: {e}")
             return None
 
     def _generate_heatmap_meters(
@@ -232,20 +227,22 @@ class DiagramsGeneratorBase:
 
             fig, ax = self._generate_plot(
                 (10, 10),
-                "Player Position Heatmap (Meters)",
-                "X Position (meters)",
-                "Y Position (meters)",
+                "Player Position Heatmap (Metros)",
+                "Posición X (metros)",
+                "Posición Y (metros)",
             )
 
             ax.set_facecolor("#4a7c2f")
-            ax.set_xlim(
-                valid_data["dx_meters"].min() - 2,
-                valid_data["dx_meters"].max() + 2,
-            )
-            ax.set_ylim(
-                valid_data["dy_meters"].min() - 2,
-                valid_data["dy_meters"].max() + 2,
-            )
+
+            x_min = valid_data["dx_meters"].min() - 2
+            x_max = valid_data["dx_meters"].max() + 2
+            y_min = valid_data["dy_meters"].min() - 2
+            y_max = valid_data["dy_meters"].max() + 2
+
+
+            ax.set_xlim(x_min,x_max)
+            ax.set_ylim(y_min, y_max)
+            ax.invert_yaxis()
 
             hb = ax.hexbin(
                 valid_data["dx_meters"],
@@ -256,11 +253,17 @@ class DiagramsGeneratorBase:
                 mincnt=1,
             )
 
-            plt.colorbar(hb, ax=ax, label="Detection count")
-            ax.invert_yaxis()
+            plt.colorbar(hb, ax=ax, label="Contador de detecciones")
             plt.tight_layout()
 
             out_path = parent_dir / f"player_heatmap_meters_{stem}.png"
+            # ax.plot(
+            #     [0, 120],
+            #     [0, 0],
+            #     color="cyan",
+            #     linewidth=10,
+            #     zorder=100
+            # )
             plt.savefig(out_path)
             plt.close(fig)
 
@@ -272,7 +275,6 @@ class DiagramsGeneratorBase:
         except Exception as e:
             logfire.error(f"[DiagramsGenerator] Error in heatmap (meters): {e}")
             return None
-
 
     def _generate_plot(
         self,

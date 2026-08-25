@@ -11,25 +11,25 @@ tracker_type: tracktrack
 track_buffer: 180
 track_high_thresh: 0.65
 track_low_thresh: 0.1
-new_track_thresh: 0.6
-match_thresh: 0.65
+new_track_thresh: 0.7
+match_thresh: 0.7
 fuse_score: True
 
-iou_weight: 0.35
+iou_weight: 0.4
 reid_weight: 0.4
 
 conf_weight: 0.35
 angle_weight: 0.4
 penalty_p: 0.3
-penalty_q: 0.3
+penalty_q: 0.35
 
 reduce_step: 0.3
 
-tai_thr: 0.45
+tai_thr: 0.4
 min_track_len: 1
 lost_match_thr: 0.4
 
 with_reid: True
 gmc_method: sparseOptFlow
-model: yolo26m-cls.pt
+model: yolo26s-cls.pt
 

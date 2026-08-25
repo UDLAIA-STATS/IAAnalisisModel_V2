@@ -103,7 +103,6 @@ class PitchHomography(HomographyBase):
             except Exception as e:
                 logfire.error(f"[Homography] Error en ML+PnL: {e}")
 
-        # 3. Si ML+PnL falla, usar RANSAC clásico
         logfire.info(f"[Homography] Usando RANSAC clásico para frame {video_item.frame_num}")
         result = self._ransac_calibrate(video_item, camera_scale, camera_tilt, session)
         if result.is_valid:
@@ -111,7 +110,6 @@ class PitchHomography(HomographyBase):
             self.cache_homography(result)
             return result
 
-        # 4. Si RANSAC falla, intentar interpolación
         logfire.warning(f"[Homography] RANSAC falló, intentando interpolación/extrapolación")
         H_interp = self._interpolate_homography(video_item.frame_num)
 
@@ -119,9 +117,9 @@ class PitchHomography(HomographyBase):
             H_interp = H_interp / H_interp[2, 2]
             result = HomographyResult(
                 H_json=json.dumps(H_interp.tolist()),
-                reprojection_error=float("inf"),  # no podemos calcularlo realmente
+                reprojection_error=float("inf"),
                 inlier_count=0,
-                is_valid=True,  # lo marcamos como válido aunque sea una aproximación
+                is_valid=True,
                 frame_num=video_item.frame_num,
                 match_id=video_item.match_id,
                 method_used="interpolated",
@@ -133,7 +131,6 @@ class PitchHomography(HomographyBase):
             logfire.info("[Homography] Interpolación exitosa (usando homografía anterior)")
             return result
 
-        # 5. Si todo falla, devolver una homografía identidad (inválida)
         logfire.error("[Homography] Todas las estrategias fallaron, devolviendo identidad")
         result = HomographyResult(
             H_json=json.dumps(np.eye(3).tolist()),
@@ -183,12 +180,31 @@ _predetermined: dict[str, tuple[float, float]] = {
     "tr_corner": (1138.0, 32.0),
     "bl_corner": (68.0, 698.0),
     "br_corner": (1212.0, 694.0),
+
     "mid_top": (640.0, 20.0),
     "mid_bottom": (640.0, 710.0),
+
+    "centre_spot": (640.0, 365.0),
+
     "lpen_tl": (142.0, 182.0),
     "lpen_bl": (142.0, 518.0),
+    "lpen_tr": (280.0, 182.0),
+    "lpen_br": (280.0, 518.0),
+
+    "rpen_tl": (1000.0, 178.0),
+    "rpen_bl": (1000.0, 522.0),
     "rpen_tr": (1138.0, 178.0),
     "rpen_br": (1138.0, 522.0),
+
+    "lsix_tl": (142.0, 275.0),
+    "lsix_bl": (142.0, 425.0),
+    "lsix_tr": (185.0, 275.0),
+    "lsix_br": (185.0, 425.0),
+
+    "rsix_tl": (1095.0, 275.0),
+    "rsix_bl": (1095.0, 425.0),
+    "rsix_tr": (1138.0, 275.0),
+    "rsix_br": (1138.0, 425.0),
 }
 
 pitch_homography = PitchHomography(_predetermined)

@@ -28,13 +28,14 @@ class PlayerTracker(DetectorBase):
         type: DetectorTypes = DetectorTypes.TRACKING,
     ):
         super().__init__(model, tracker_config_file, type)
+
         self.classes = {0: player_annotator}
         self.types_map = {0: PlayerModel}
 
 
     @override
     def __init_model__(self, model: Path, half: bool = False):
-        self.model: YOLO = YOLO("yolo26x.pt")
+        self.model: YOLO = YOLO(model.as_posix())
 
         if model.suffix == ".pt":
             self.model.to(self.device)
@@ -51,16 +52,14 @@ class PlayerTracker(DetectorBase):
             tracker=self.tracker_config_file,
             persist=True,
             conf=0.1,
-            iou=0.6,
+            iou=0.7,
             verbose=False,
             device=self.device,
-            # stream=True,
             # augment=True,
             agnostic_nms=True,
             end2end=True
         )
 
-        # logfire.info(f"[PlayerTracker] Number of tracks: {len(list(tracks))}")
         return tracks
 
     @override

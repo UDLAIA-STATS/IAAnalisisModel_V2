@@ -23,14 +23,15 @@ import logfire
 from src.entities.utils.spark_instance import spark
 from src.core.post_processing.v2.processing_config import PostProcessingConfig
 
+
 class DataCleaner:
     def __init__(self, config: PostProcessingConfig):
         self.config = config
         self.spark = spark
 
     def clean_ball_states(
-            self, ball_df: DataFrame, goals_df: Optional[DataFrame] = None
-        ) -> DataFrame:
+        self, ball_df: DataFrame, goals_df: Optional[DataFrame] = None
+    ) -> DataFrame:
         if ball_df is None or ball_df.isEmpty():
             return ball_df
 
@@ -63,8 +64,6 @@ class DataCleaner:
             .drop("rn")
         )
 
-        # A ball that just went in tends to go static (settles in the net) -
-        # don't let those frames get pruned as "stuck detection" noise.
         goal_zones = self._compute_goal_zones(goals_df)
 
         df = df.withColumn("speed_kmh", coalesce(col("speed_kmh"), lit(0.0)))
@@ -78,7 +77,9 @@ class DataCleaner:
                 cond = sqrt(
                     pow(col("cx") - lit(gx), 2) + pow(col("cy") - lit(gy), 2)
                 ) <= lit(radius)
-                near_goal_cond = cond if near_goal_cond is None else (near_goal_cond | cond)
+                near_goal_cond = (
+                    cond if near_goal_cond is None else (near_goal_cond | cond)
+                )
             df = df.withColumn("near_goal", near_goal_cond)
         else:
             df = df.withColumn("near_goal", lit(False))
@@ -102,8 +103,13 @@ class DataCleaner:
             )
         )
         df = df.drop(
-            "prev_cx", "prev_cy", "jump", "is_static",
-            "static_group", "static_count", "near_goal",
+            "prev_cx",
+            "prev_cy",
+            "jump",
+            "is_static",
+            "static_group",
+            "static_count",
+            "near_goal",
         )
 
         logfire.info(f"[DataCleaner] Ball states cleaned: {df.count()} remaining")
@@ -135,8 +141,16 @@ class DataCleaner:
         for row in stats:
             if row.center_cx is None or row.center_cy is None:
                 continue
-            half_diag = 0.5 * math.sqrt((row.max_w or 0.0) ** 2 + (row.max_h or 0.0) ** 2)
-            zones.append((row.center_cx, row.center_cy, half_diag + self.config.goal_zone_margin_px))
+            half_diag = 0.5 * math.sqrt(
+                (row.max_w or 0.0) ** 2 + (row.max_h or 0.0) ** 2
+            )
+            zones.append(
+                (
+                    row.center_cx,
+                    row.center_cy,
+                    half_diag + self.config.goal_zone_margin_px,
+                )
+            )
         return zones
 
     def clean_goal_posts(self, posts_df: DataFrame) -> DataFrame:
@@ -147,28 +161,34 @@ class DataCleaner:
             (col("confidence") >= self.config.min_post_confidence)
             & (col("area") >= self.config.min_post_area)
         )
-        if df.isEmpty():
-            return posts_df
 
-        assembler = VectorAssembler(inputCols=["cx", "cy"], outputCol="features")
-        k = 2
-        if df.count() < 2:
-            k = 1
+        num_rows = df.count()
 
-        kmeans = KMeans(featuresCol="features", k=k, seed=42)
+        if num_rows < 2:
+            logfire.info(
+                "[DataCleaner] Not enough goal post detections for clustering."
+            )
+            return df
+
+        num_points = df.select("cx", "cy").distinct().count()
+
+        if num_points < 2:
+            logfire.info("[DataCleaner] Goal posts have identical coordinates.")
+            return df
+
+        assembler = VectorAssembler(
+            inputCols=["cx", "cy"],
+            outputCol="features",
+        )
+        kmeans = KMeans(
+            featuresCol="features",
+            k=2,
+            seed=42,
+        )
+
         pipeline = Pipeline(stages=[assembler, kmeans])
         model = pipeline.fit(df)
-        centers = model.stages[-1].clusterCenters()
-        if len(centers) == 2:
-            dist = math.sqrt(
-                (centers[0][0] - centers[1][0]) ** 2
-                + (centers[0][1] - centers[1][1]) ** 2
-            )
-            if dist < self.config.cluster_distance_threshold:
-                # Usar k=1
-                kmeans = KMeans(featuresCol="features", k=1, seed=42)
-                pipeline = Pipeline(stages=[assembler, kmeans])
-                model = pipeline.fit(df)
+
         clustered = model.transform(df)
         clustered = clustered.withColumnRenamed("prediction", "cluster")
 
@@ -207,9 +227,7 @@ class DataCleaner:
         logfire.info(f"[DataCleaner] Goal posts cleaned: {df.count()} remaining")
         return df
 
-    def clean_player_states(
-        self, player_df: DataFrame
-    ) -> DataFrame:
+    def clean_player_states(self, player_df: DataFrame) -> DataFrame:
         if player_df is None:
             return player_df
         return player_df.filter(col("confidence") >= 0.2)

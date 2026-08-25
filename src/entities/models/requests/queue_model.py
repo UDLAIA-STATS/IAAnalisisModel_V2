@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 from typing import List
 
 from pydantic import BaseModel
@@ -12,6 +13,7 @@ class TaskStep(AuditTableCompletedTable, NumericIdModel, table=True):
     step_number: int = Field(index=True)
     name: str = Field(max_length=100)
     message: str = Field(max_length=500)
+    error_details: str = Field(max_length=500, default="")
     state: StatesModel = Field(default=StatesModel.PENDING)
 
     task_id: str = Field(foreign_key="tasks.id", index=True)
@@ -46,3 +48,7 @@ class TaskRead(BaseModel):
     updated_at: datetime
 
     steps: List[TaskStep] = []
+
+class OrderDirection(StrEnum):
+    ASC = "asc"
+    DESC = "desc"

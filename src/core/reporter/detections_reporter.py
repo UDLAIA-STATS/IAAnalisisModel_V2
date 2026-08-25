@@ -11,9 +11,10 @@ from src.entities.reporter.match_spatial_analyzer import MatchSpatialAnalyzer
 from src.config.routes import DETECTED_OBJECTS_METRICS_DIR
 from src.config.configuration import settings
 
+
 class DetectionsReporter(DetectionsReporterBase):
     def __init__(self):
-        
+
         super().__init__()
         self.spatial_analyzer = MatchSpatialAnalyzer()
 
@@ -31,7 +32,6 @@ class DetectionsReporter(DetectionsReporterBase):
             self.generate_diagrams(report_path, match_id)
         )
 
-
         speed_chart, distance_chart = self.generate_per_player_timeseries(
             report_path, match_id
         )
@@ -43,9 +43,14 @@ class DetectionsReporter(DetectionsReporterBase):
             dist_matrix_chart,
             traj_chart,
         ) = self.spatial_analyzer.generate_spatial_diagrams(report_path, match_id)
-        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(report_path, match_id, session) 
-        
-
+        player_heatmaps = self.spatial_analyzer.generate_per_player_heatmaps(
+            match_id=match_id, session=session, report_path=report_path
+        )
+        player_trajectories = (
+            self.spatial_analyzer.generate_per_player_movement_trajectories(
+                match_id, session
+            )
+        )
 
         reports = [
             ("report_detections", report_path.as_posix()),
@@ -63,17 +68,34 @@ class DetectionsReporter(DetectionsReporterBase):
             ("number_report", number_report),
         ]
 
-
-
         chart_keys = self.upload_reports(reports, match_id)
 
         for player_id, heatmap_path in player_heatmaps:
             key = self.upload_report(heatmap_path, match_id, FilePurposeTypes.HEATMAP)
-            PlayerRepository.upload_heatmap(player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session)
-        
+            PlayerRepository.upload_heatmap(
+                player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session
+            )
+
+        for player_id, trajectory_path in player_trajectories:
+            key = self.upload_report(
+                trajectory_path, match_id, FilePurposeTypes.HEATMAP
+            )
+            PlayerRepository.upload_trajectory(
+                player_id, settings.PLAYER_DATA_PUBLIC_URL + "/" + key, session
+            )
+
+        time_kde_by_team_path = (
+            settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["velocity_kde_by_team"]
+        )
+        voronoi_territories_path = (
+            settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["voronoi_territories"]
+        )
+
         PlayerRepository.upload_match_files(
             settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["heatmap_chart"],
             settings.PLAYER_DATA_PUBLIC_URL + "/" + chart_keys["movement_trajectories"],
+            time_kde_by_team_path,
+            voronoi_territories_path,
             match_id,
             session,
         )

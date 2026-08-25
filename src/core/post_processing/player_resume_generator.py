@@ -53,6 +53,7 @@ class PlayerResumeGenerator:
                 player_id=player.id,
                 track_id=player.track_id,
                 match_id=player.match_id,
+                team_goals=player.team_goals,
                 goals=player.goals,
                 passes=player.shots,
                 team_color=player.team_color or "",
@@ -64,8 +65,10 @@ class PlayerResumeGenerator:
                 heatmap_image_path=player.heatmap_path or "",
                 team_heatmap_path=player.team_heatmap_path or "",
                 avg_possession_time_s=truncate(player.ball_possession_time, 6),
-
-                shirt_number=player.shirt_number or 1,
+                player_movement_trajectories_path=player.player_movement_trajectories_path or "",
+                team_color_time_kde_path=player.team_color_time_kde_path or "",
+                shirt_number=player.shirt_number or 0,
+                voronoi_territories_path=player.voronoi_territories_path or "",
             )
 
             resumes.append(resume.model_dump())

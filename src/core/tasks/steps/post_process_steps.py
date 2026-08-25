@@ -59,8 +59,10 @@ class ValidationProcess:
             jersey_color_extractor.merge_colors(request.match_id, session)
 
             PostProcessor(request.match_id, session=session, config=PostProcessingConfig(frame_rate=fps)).run()
-
             number_postprocessing.process(request.match_id, session)
+
+            player_crop_validator.validate_match(request.match_id, session)
+
             # ball_predictor_cls.predict(request.match_id, total_frames, session)
             # goal_validator_cls.validate(request.match_id, session)
             # ball_possession_predictor_cls.predict(request.match_id, session)
@@ -69,13 +71,8 @@ class ValidationProcess:
 
             # events_analyzer.analyze(request.match_id, session)
 
-            # player_crop_validator.validate_match(request.match_id, session)
 
             validate_step.state = StatesModel.COMPLETED
             TaskRepository.upsert_task_step(validate_step, session)
         except Exception as e:
-            validate_step.state = StatesModel.FAILED
-            validate_step.message = f"Error validando jugadores: {str(e)}"
-            TaskRepository.upsert_task_step(validate_step, session)
-            logfire.error(f"Error validating players: {traceback.format_exc()}")
             raise e
