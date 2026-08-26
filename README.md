@@ -1,4 +1,4 @@
-# IAAnalisisModel_V2
+# SoccerAnalysis_AI
 Motor de visión por computador y analítica deportiva para el análisis automatizado de partidos de fútbol.
 
 Pueden acceder al stack completo mediante este enlace: <a href="https://github.com/UDLAIA-STATS/">Repositorio Principal</a>
@@ -71,7 +71,7 @@ Esta arquitectura permite mantener independientes las etapas del pipeline y faci
 
 ## Estructura del proyecto
 ```text
-IAAnalisisModel_V2/
+SoccerAnalysis_AI/
 ├── main.py                  # Punto de entrada de FastAPI
 ├── pyproject.toml           # Dependencias y configuración
 ├── docker-compose.yaml      # Configuración de Docker
@@ -216,7 +216,7 @@ Logfire proporciona instrumentación y trazabilidad de la aplicación y del serv
 Dynaconf gestiona la configuración externa mediante variables de entorno y archivos de configuración.
 
 ## Repositorio
-<a href="https://github.com/UDLAIA-STATS/SoccerAnalysis_AI">IAAnalisisModel_V2 — GitHub</a>
+<a href="https://github.com/UDLAIA-STATS/SoccerAnalysis_AI">SoccerAnalysis_AI — GitHub</a>
 
 ## Referencias
 * <a href="https://fastapi.tiangolo.com/">FastAPI</a>
