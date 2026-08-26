@@ -216,7 +216,7 @@ Logfire proporciona instrumentación y trazabilidad de la aplicación y del serv
 Dynaconf gestiona la configuración externa mediante variables de entorno y archivos de configuración.
 
 ## Repositorio
-<a href="https://github.com/UDLAIA-STATS/IAAnalisisModel_V2">IAAnalisisModel_V2 — GitHub</a>
+<a href="https://github.com/UDLAIA-STATS/SoccerAnalysis_AI">IAAnalisisModel_V2 — GitHub</a>
 
 ## Referencias
 * <a href="https://fastapi.tiangolo.com/">FastAPI</a>
